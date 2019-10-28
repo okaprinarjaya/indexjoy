@@ -1,0 +1,20 @@
+{application, idea_execute,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {idea_execute_app, []}},
+  {applications,
+   [kernel,
+    stdlib,
+    crypto,
+    public_key,
+    ssl,
+    cowboy,
+    hackney
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {licenses, ["Apache 2.0"]},
+  {links, []}
+ ]}.
