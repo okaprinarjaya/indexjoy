@@ -7,7 +7,13 @@
 start(_StartType, _StartArgs) ->
   AnyPath = {'_', handler_any_host_any_path, []},
   AnyHost = {'_', [AnyPath]},
-  Routes = [AnyHost],
+
+  IndexJoyPathList = [
+    {<<"/">>, handler_indexjoy_root, []}
+  ],
+  IndexJoyHost = {<<"indexjoy.com">>, IndexJoyPathList},
+
+  Routes = [IndexJoyHost, AnyHost],
 
   Dispatch = cowboy_router:compile(Routes),
   {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => Dispatch}}),

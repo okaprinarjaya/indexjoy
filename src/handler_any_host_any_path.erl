@@ -2,6 +2,12 @@
 
 -export([init/2]).
 
+-define(STATIC_CUSTOMER_HOSTNAME_TO_IPADDR, #{
+  <<"dananutama.com">> => <<"119.81.88.232">>,
+  <<"insite.co.id">> => <<"103.247.9.42">>,
+  <<"okaprinarjaya.github.io">> => <<"185.199.109.153">>
+}).
+
 init(RequestFacilitator, State) ->
   case whos_coming_detection_by_user_agent(RequestFacilitator) of
     clientbrowser ->
@@ -28,29 +34,47 @@ whos_coming_detection_by_user_agent(RequestFacilitator) ->
   end.
 
 handle_clientbrowser(RequestFacilitator, State) ->
-  MachineCustomer = <<"185.199.110.153">>,
-  HostCustomer = <<"okaprinarjaya.github.io">>,
-  PathRetrieveCustomer = cowboy_req:path(RequestFacilitator),
-  RequestHeadersRetrieveCustomer = [
-    {<<"Host">>, HostCustomer},
-    {<<"User-Agent">>, <<"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/77.0.3865.120 Safari/537.36">>},
-    {<<"Pragma">>, <<"no-cache">>},
-    {<<"Connection">>, <<"keep-alive">>}
-  ],
-  RequestCustomer = {get, PathRetrieveCustomer, RequestHeadersRetrieveCustomer, <<>>},
+  HostCustomer = cowboy_req:host(RequestFacilitator),
 
-  {ok, ConnectionToCustomer} = hackney:connect(hackney_tcp, MachineCustomer, 80, []),
-  {ok, StatusCodeCustomer, ResponseHeadersCustomer, ConnectionReferenceCustomer} =
-    hackney:send_request(ConnectionToCustomer, RequestCustomer),
-  {ok, BodyCustomer} = hackney:body(ConnectionReferenceCustomer),
+  case catch maps:get(HostCustomer, ?STATIC_CUSTOMER_HOSTNAME_TO_IPADDR) of
+    {badkey, _} ->
+      handle_clientbrowser_undefined_hostname(RequestFacilitator, State);
+    {'EXIT',{{badkey, _}, _}} ->
+      handle_clientbrowser_undefined_hostname(RequestFacilitator, State);
 
-  HeadersCustomer = hackney_headers:new(ResponseHeadersCustomer),
-  ContentTypeCustomer = hackney_headers:get_value(<<"Content-Type">>, HeadersCustomer),
+    MachineCustomer ->
+      UserAgentFacilitator = cowboy_req:header(<<"user-agent">>, RequestFacilitator),
+      PathRetrieveCustomer = cowboy_req:path(RequestFacilitator),
+      RequestHeadersRetrieveCustomer = [
+        {<<"Host">>, HostCustomer},
+        {<<"User-Agent">>, UserAgentFacilitator},
+        {<<"Pragma">>, <<"no-cache">>},
+        {<<"Connection">>, <<"keep-alive">>}
+      ],
+      RequestCustomer = {get, PathRetrieveCustomer, RequestHeadersRetrieveCustomer, <<>>},
 
+      {ok, ConnectionToCustomer} = hackney:connect(hackney_tcp, MachineCustomer, 80, []),
+      {ok, StatusCodeCustomer, ResponseHeadersCustomer, ConnectionReferenceCustomer} =
+        hackney:send_request(ConnectionToCustomer, RequestCustomer),
+      {ok, BodyCustomer} = hackney:body(ConnectionReferenceCustomer),
+
+      HeadersCustomer = hackney_headers:new(ResponseHeadersCustomer),
+      ContentTypeCustomer = hackney_headers:get_value(<<"Content-Type">>, HeadersCustomer),
+
+      ReplyFacilitator = cowboy_req:reply(
+        StatusCodeCustomer,
+        #{<<"content-type">> => ContentTypeCustomer},
+        BodyCustomer,
+        RequestFacilitator
+      ),
+      {ok, ReplyFacilitator, State}
+  end.
+
+handle_clientbrowser_undefined_hostname(RequestFacilitator, State) ->
   ReplyFacilitator = cowboy_req:reply(
-    StatusCodeCustomer,
-    #{<<"content-type">> => ContentTypeCustomer},
-    BodyCustomer,
+    204,
+    #{<<"content-type">> => <<"text/plain">>},
+    <<>>,
     RequestFacilitator
   ),
   {ok, ReplyFacilitator, State}.
