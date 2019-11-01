@@ -4,8 +4,7 @@
 
 -define(STATIC_CUSTOMER_HOSTNAME_TO_IPADDR, #{
   <<"dananutama.com">> => <<"119.81.88.232">>,
-  <<"insite.co.id">> => <<"103.247.9.42">>,
-  <<"okaprinarjaya.github.io">> => <<"185.199.109.153">>
+  <<"insite.co.id">> => <<"103.247.9.42">>
 }).
 
 init(RequestFacilitator, State) ->
