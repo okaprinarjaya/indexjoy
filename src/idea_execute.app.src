@@ -10,7 +10,8 @@
     public_key,
     ssl,
     cowboy,
-    hackney
+    hackney,
+    mnesia
    ]},
   {env,[]},
   {modules, []},

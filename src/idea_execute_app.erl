@@ -2,19 +2,21 @@
 
 -behaviour(application).
 
--export([start/2, stop/1]).
+-export([start/2, stop/1, init_db/0]).
 
 start(_StartType, _StartArgs) ->
+  mnesia:stop(),
+
   AnyPath = {'_', handler_any_host_any_path, []},
   AnyHost = {'_', [AnyPath]},
 
   IndexJoyPathList = [
-    {<<"/">>, handler_indexjoy_root, []}
+    {<<"/">>, handler_indexjoy_root, []},
+    {<<"/create">>, handler_test_test_test, []}
   ],
   IndexJoyHost = {<<"indexjoy.com">>, IndexJoyPathList},
 
   Routes = [IndexJoyHost, AnyHost],
-
   Dispatch = cowboy_router:compile(Routes),
   {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => Dispatch}}),
 

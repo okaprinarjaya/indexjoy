@@ -4,7 +4,7 @@
 
 -export([
   insert_page/3,
-  select_file_by/2,
+  select_page_filename_by/2,
   select_all/0
 ]).
 
@@ -14,17 +14,16 @@
 init() ->
   case catch mnesia:table_info(customers_pages, version) of
     {{_, _}, []} ->
-      io:format("customers_pages - already exists~n");
+      io:format("Table: customers_pages - Already exists~n");
 
-    Any when Any =:= {'EXIT',{aborted,{no_exists,customers_pages,version}}}; Any =:= {aborted,{no_exists,customers_pages,version}} ->
+    Fail when Fail =:= {'EXIT',{aborted,{no_exists,customers_pages,version}}}; Fail =:= {aborted,{no_exists,customers_pages,version}} ->
       TabDefs = [
         {attributes, record_info(fields, customers_pages)},
         {disc_copies, [node()]},
         {type, bag}
       ],
       mnesia:create_table(customers_pages, TabDefs),
-
-      io:format("customers_pages - created~n")
+      io:format("Table: customers_pages - Created~n")
   end.
 
 insert_page(CustomerHost, PagePath, PageFilename) ->
@@ -39,12 +38,16 @@ insert_page(CustomerHost, PagePath, PageFilename) ->
 
   mnesia:transaction(FunTrx).
 
-select_file_by(CustomerHost, PagePath) ->
+select_page_filename_by(CustomerHost, PagePath) ->
   FunTrx = fun() ->
-    MatchHead = #customers_pages{customer_host = CustomerHost, page_path = PagePath, page_filename = '$3', _ = '_'},
-    % Guard = {},
-    Result = '$3',
-    MatchFunction = {MatchHead, [], [Result]},
+    MatchHead = #customers_pages{
+      customer_host = CustomerHost,
+      page_path = PagePath,
+      page_filename = '$3',
+      _ = '_'
+    },
+    % Guard = {'>', '$3', 10},
+    MatchFunction = {MatchHead, [], ['$3']},
     MatchSpec = [MatchFunction],
 
     mnesia:select(customers_pages, MatchSpec)
