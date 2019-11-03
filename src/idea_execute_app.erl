@@ -5,8 +5,6 @@
 -export([start/2, stop/1, init_db/0]).
 
 start(_StartType, _StartArgs) ->
-  mnesia:stop(),
-
   AnyPath = {'_', handler_any_host_any_path, []},
   AnyHost = {'_', [AnyPath]},
 
