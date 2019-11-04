@@ -17,4 +17,5 @@ _build
 *.iml
 rebar3.crashdump
 *~
-IndexJoyDb
+sys.config
+Mnesia.nonode@nohost

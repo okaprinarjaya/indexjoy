@@ -3,8 +3,9 @@
 -export([init/0]).
 
 -export([
-  insert_page/3,
-  select_page_filename_by/2,
+  save_page/2,
+  select_page_by/1,
+  select_all_by/1,
   select_all/0
 ]).
 
@@ -20,46 +21,40 @@ init() ->
       TabDefs = [
         {attributes, record_info(fields, customers_pages)},
         {disc_copies, [node()]},
-        {type, bag}
+        {type, set}
       ],
       mnesia:create_table(customers_pages, TabDefs),
       io:format("Table: customers_pages - Created~n")
   end.
 
-insert_page(CustomerHost, PagePath, PageFilename) ->
+save_page(CustomerHostAndPath, PageFilename) ->
   FunTrx = fun() ->
+    CustomerHostOnly = lists:nth(1, string:split(CustomerHostAndPath, "/")),
     PageRecord = #customers_pages{
-      customer_host = CustomerHost,
-      page_path = PagePath,
+      customer_host_and_path = CustomerHostAndPath,
+      customer_host_only = CustomerHostOnly,
       page_filename = PageFilename
     },
     mnesia:write(PageRecord)
   end,
-
   mnesia:transaction(FunTrx).
 
-select_page_filename_by(CustomerHost, PagePath) ->
+select_page_by(CustomerHostAndPath) ->
+  mnesia:transaction(fun() -> mnesia:read(customers_pages, CustomerHostAndPath) end).
+
+select_all_by(CustomerHostOnly) ->
   FunTrx = fun() ->
-    MatchHead = #customers_pages{
-      customer_host = CustomerHost,
-      page_path = PagePath,
-      page_filename = '$3',
-      _ = '_'
-    },
-    % Guard = {'>', '$3', 10},
-    MatchFunction = {MatchHead, [], ['$3']},
-    MatchSpec = [MatchFunction],
-
-    mnesia:select(customers_pages, MatchSpec)
+    QH = qlc:q(
+      [{A, B, C} || #customers_pages{customer_host_and_path = A, customer_host_only = B, page_filename = C} <- mnesia:table(customers_pages), B =:= CustomerHostOnly]
+    ),
+    qlc:eval(QH)
   end,
-
   mnesia:transaction(FunTrx).
 
 select_all() ->
   FunTrx = fun() ->
     qlc:eval(
-      qlc:q([X || X <- mnesia:table(customers_pages)])
+      qlc:q([{A, B, C} || #customers_pages{customer_host_and_path = A, customer_host_only = B, page_filename = C} <- mnesia:table(customers_pages)])
     )
   end,
-
   mnesia:transaction(FunTrx).

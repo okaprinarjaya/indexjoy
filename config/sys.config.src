@@ -1,0 +1,3 @@
+[
+  {mnesia, [{dir, "${INDEX_JOY_MNESIA_PATH}"}]}
+].

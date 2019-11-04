@@ -4,13 +4,12 @@
 
 init(Request, State) ->
   QS = cowboy_req:parse_qs(Request),
-  CustomerHost = proplists:get_value(<<"ch">>, QS),
-  PagePath = proplists:get_value(<<"pp">>, QS),
+  CustomerHostAndPath = proplists:get_value(<<"chp">>, QS),
   PageFilename = proplists:get_value(<<"pfn">>, QS),
 
   if
     length(QS) > 0 ->
-      db_customers_pages:insert_page(CustomerHost, PagePath, PageFilename);
+      db_customers_pages:save_page(CustomerHostAndPath, PageFilename);
     true -> pass
   end,
 
