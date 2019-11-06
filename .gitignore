@@ -17,5 +17,4 @@ _build
 *.iml
 rebar3.crashdump
 *~
-sys.config
-Mnesia.nonode@nohost
+config/sys.config

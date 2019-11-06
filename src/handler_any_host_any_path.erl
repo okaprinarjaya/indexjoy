@@ -79,10 +79,29 @@ handle_clientbrowser_undefined_hostname(RequestFacilitator, State) ->
   {ok, ReplyFacilitator, State}.
 
 handle_googlebot(RequestFacilitator, State) ->
-  ReplyFacilitator = cowboy_req:reply(
-    200,
-    #{<<"content-type">> => <<"text/html">>},
-    <<"<html><head><title>Halo Search Engine Crawler!</title></head><body><h1>Halo Search Engine Crawler!</h1></body></html>">>,
-    RequestFacilitator
-  ),
-  {ok, ReplyFacilitator, State}.
+  CustomerHost = cowboy_req:host(RequestFacilitator),
+  HostCustomerAndPath = [CustomerHost, cowboy_req:path(RequestFacilitator)],
+
+  case db_customers_seo_pages:select_page_by(iolist_to_binary(HostCustomerAndPath)) of
+    {ok, BinPageFilename} ->
+      {ok, CustomersSeoPagesBasePath} = application:get_env(idea_execute, index_joy_customers_seo_pages_path),
+      FullPathFile = [CustomersSeoPagesBasePath, <<"/">>, CustomerHost, <<"/">>, BinPageFilename],
+
+      case file:read_file(iolist_to_binary(FullPathFile)) of
+        {ok, BinFileContent} ->
+          ReplyFacilitator = cowboy_req:reply(200, #{<<"content-type">> => <<"text/html">>}, BinFileContent, RequestFacilitator),
+          {ok, ReplyFacilitator, State};
+
+        {error, _} ->
+          handle_googlebot_document_notfound(RequestFacilitator, State)
+      end;
+
+    notfound ->
+      handle_googlebot_document_notfound(RequestFacilitator, State)
+  end.
+
+handle_googlebot_document_notfound(Request, State) ->
+  Html = <<"<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>">>,
+  Reply = cowboy_req:reply(404, #{<<"content-type">> => <<"text/html">>}, Html, Request),
+
+  {ok, Reply, State}.

@@ -38,4 +38,5 @@ init_db() ->
   application:ensure_started(mnesia),
 
   io:format("Preparing tables~n"),
-  db_customers_pages:init().
+  db_customers_seo_pages:init(),
+  db_customers_websites_paths_mappings:init().

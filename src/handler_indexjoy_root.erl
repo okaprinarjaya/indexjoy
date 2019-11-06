@@ -3,7 +3,7 @@
 -export([init/2]).
 
 init(Request, State) ->
-  {atomic, Rows} = db_customers_pages:select_all(),
+  {atomic, Rows} = db_customers_seo_pages:select_all(),
   F = fun(Row) ->
     {CustomerHostAndPath, _HostOnly, PageFilename} = Row,
     [

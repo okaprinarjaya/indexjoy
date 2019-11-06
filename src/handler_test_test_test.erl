@@ -9,7 +9,7 @@ init(Request, State) ->
 
   if
     length(QS) > 0 ->
-      db_customers_pages:save_page(CustomerHostAndPath, PageFilename);
+      db_customers_seo_pages:save_page(CustomerHostAndPath, PageFilename);
     true -> pass
   end,
 

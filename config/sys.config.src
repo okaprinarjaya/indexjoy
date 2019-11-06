@@ -1,3 +1,4 @@
 [
+  {idea_execute, [{index_joy_customers_seo_pages_path, "${INDEX_JOY_CUSTOMERS_SEO_PAGES_PATH}"}]},
   {mnesia, [{dir, "${INDEX_JOY_MNESIA_PATH}"}]}
 ].
