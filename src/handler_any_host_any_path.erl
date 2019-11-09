@@ -9,37 +9,41 @@
 
 init(RequestFacilitator, State) ->
   case whos_coming_detection_by_user_agent(RequestFacilitator) of
-    clientbrowser ->
-      handle_clientbrowser(RequestFacilitator, State);
-    googlebot ->
-      handle_googlebot(RequestFacilitator, State)
+    'client-browser' ->
+      handle_client_browser(RequestFacilitator, State);
+    'search-engine-crawler' ->
+      handle_search_engine_crawler_bot(RequestFacilitator, State)
     end.
 
 whos_coming_detection_by_user_agent(RequestFacilitator) ->
-  GoogleBotList = [
+  SearchEngineCrawlerBotList = [
     <<"Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)">>,
     <<"Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko; compatible; Googlebot/2.1; +http://www.google.com/bot.html) Safari/537.36">>,
     <<"Mozilla/5.0 (Linux; Android 6.0.1; Nexus 5X Build/MMB29P) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.96 Mobile Safari/537.36 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)">>,
     <<"Googlebot/2.1 (+http://www.google.com/bot.html)">>,
     <<"Googlebot-Image/1.0">>,
     <<"Googlebot-News">>,
-    <<"Googlebot-Video/1.0">>
+    <<"Googlebot-Video/1.0">>,
+    <<"DuckDuckBot/1.0; (+http://duckduckgo.com/duckduckbot.html)">>,
+    <<"Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)">>,
+    <<"Mozilla/5.0 (iPhone; CPU iPhone OS 7_0 like Mac OS X) AppleWebKit/537.51.1 (KHTML, like Gecko) Version/7.0 Mobile/11A465 Safari/9537.53 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)">>,
+    <<"Mozilla/5.0 (Windows Phone 8.1; ARM; Trident/7.0; Touch; rv:11.0; IEMobile/11.0; NOKIA; Lumia 530) like Gecko (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)">>
   ],
   UserAgent = cowboy_req:header(<<"user-agent">>, RequestFacilitator),
 
-  case lists:member(UserAgent, GoogleBotList) of
-    true -> googlebot;
-    false -> clientbrowser
+  case lists:member(UserAgent, SearchEngineCrawlerBotList) of
+    true -> 'search-engine-crawler';
+    false -> 'client-browser'
   end.
 
-handle_clientbrowser(RequestFacilitator, State) ->
+handle_client_browser(RequestFacilitator, State) ->
   HostCustomer = cowboy_req:host(RequestFacilitator),
 
   case catch maps:get(HostCustomer, ?STATIC_CUSTOMER_HOSTNAME_TO_IPADDR) of
     {badkey, _} ->
-      handle_clientbrowser_undefined_hostname(RequestFacilitator, State);
+      handle_client_browser_undefined_hostname(RequestFacilitator, State);
     {'EXIT',{{badkey, _}, _}} ->
-      handle_clientbrowser_undefined_hostname(RequestFacilitator, State);
+      handle_client_browser_undefined_hostname(RequestFacilitator, State);
 
     MachineCustomer ->
       UserAgentFacilitator = cowboy_req:header(<<"user-agent">>, RequestFacilitator),
@@ -69,7 +73,7 @@ handle_clientbrowser(RequestFacilitator, State) ->
       {ok, ReplyFacilitator, State}
   end.
 
-handle_clientbrowser_undefined_hostname(RequestFacilitator, State) ->
+handle_client_browser_undefined_hostname(RequestFacilitator, State) ->
   ReplyFacilitator = cowboy_req:reply(
     204,
     #{<<"content-type">> => <<"text/plain">>},
@@ -78,7 +82,7 @@ handle_clientbrowser_undefined_hostname(RequestFacilitator, State) ->
   ),
   {ok, ReplyFacilitator, State}.
 
-handle_googlebot(RequestFacilitator, State) ->
+handle_search_engine_crawler_bot(RequestFacilitator, State) ->
   CustomerHost = cowboy_req:host(RequestFacilitator),
   HostCustomerAndPath = [CustomerHost, cowboy_req:path(RequestFacilitator)],
 
@@ -93,14 +97,16 @@ handle_googlebot(RequestFacilitator, State) ->
           {ok, ReplyFacilitator, State};
 
         {error, _} ->
-          handle_googlebot_document_notfound(RequestFacilitator, State)
+          handle_search_engine_crawler_bot_404(RequestFacilitator, State)
       end;
 
     notfound ->
-      handle_googlebot_document_notfound(RequestFacilitator, State)
+      %% It should request and render the original page.
+      %% But for now, temporarily will response 404.
+      handle_search_engine_crawler_bot_404(RequestFacilitator, State)
   end.
 
-handle_googlebot_document_notfound(Request, State) ->
+handle_search_engine_crawler_bot_404(Request, State) ->
   Html = <<"<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>">>,
   Reply = cowboy_req:reply(404, #{<<"content-type">> => <<"text/html">>}, Html, Request),
 
