@@ -25,6 +25,7 @@ whos_coming_detection_by_user_agent(RequestFacilitator) ->
     <<"Googlebot-News">>,
     <<"Googlebot-Video/1.0">>,
     <<"DuckDuckBot/1.0; (+http://duckduckgo.com/duckduckbot.html)">>,
+    <<"msnbot/2.0b (+http://search.msn.com/msnbot.htm)">>,
     <<"Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)">>,
     <<"Mozilla/5.0 (iPhone; CPU iPhone OS 7_0 like Mac OS X) AppleWebKit/537.51.1 (KHTML, like Gecko) Version/7.0 Mobile/11A465 Safari/9537.53 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)">>,
     <<"Mozilla/5.0 (Windows Phone 8.1; ARM; Trident/7.0; Touch; rv:11.0; IEMobile/11.0; NOKIA; Lumia 530) like Gecko (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)">>,
