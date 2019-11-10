@@ -31,7 +31,12 @@ whos_coming_detection_by_user_agent(RequestFacilitator) ->
     <<"Mozilla/5.0 (iPhone; CPU iPhone OS 7_0 like Mac OS X) AppleWebKit/537.51.1 (KHTML, like Gecko) Version/7.0 Mobile/11A465 Safari/9537.53 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)">>,
     <<"Mozilla/5.0 (Windows Phone 8.1; ARM; Trident/7.0; Touch; rv:11.0; IEMobile/11.0; NOKIA; Lumia 530) like Gecko (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)">>,
     <<"Mozilla/5.0 (Windows Phone 8.1; ARM; Trident/7.0; Touch; rv:11.0; IEMobile/11.0; NOKIA; Lumia 530) like Gecko BingPreview/1.0b">>,
-    <<"Mozilla/5.0 (iPhone; CPU iPhone OS 7_0 like Mac OS X) AppleWebKit/537.51.1 (KHTML, like Gecko) Version/7.0 Mobile/11A465 Safari/9537.53 BingPreview/1.0b">>
+    <<"Mozilla/5.0 (iPhone; CPU iPhone OS 7_0 like Mac OS X) AppleWebKit/537.51.1 (KHTML, like Gecko) Version/7.0 Mobile/11A465 Safari/9537.53 BingPreview/1.0b">>,
+    <<"facebookexternalhit/1.1 (+http://www.facebook.com/externalhit_uatext.php)">>,
+    <<"adreview/1.0">>,
+    <<"cortex/1.0">>,
+    <<"WhatsApp/2.19.274 A">>,
+    <<"Mozilla/4.0 (compatible; MSIE 8.0; Windows NT 5.1; Trident/4.0; GTB7.2; MRSPUTNIK 2, 4, 0, 490; .NET4.0C)">>
   ],
 
   case cowboy_req:header(<<"user-agent">>, RequestFacilitator) of
