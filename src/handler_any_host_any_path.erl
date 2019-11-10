@@ -24,6 +24,7 @@ whos_coming_detection_by_user_agent(RequestFacilitator) ->
     <<"Googlebot-Image/1.0">>,
     <<"Googlebot-News">>,
     <<"Googlebot-Video/1.0">>,
+    <<"Mozilla/5.0 (compatible; Google-Structured-Data-Testing-Tool +https://search.google.com/structured-data/testing-tool)">>,
     <<"DuckDuckBot/1.0; (+http://duckduckgo.com/duckduckbot.html)">>,
     <<"msnbot/2.0b (+http://search.msn.com/msnbot.htm)">>,
     <<"Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)">>,
