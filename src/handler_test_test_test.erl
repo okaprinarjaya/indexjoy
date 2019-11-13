@@ -1,6 +1,6 @@
 -module(handler_test_test_test).
 
--export([init/2]).
+-export([init/2, fetch_page/0]).
 
 init(Request, State) ->
   QS = cowboy_req:parse_qs(Request),
@@ -26,3 +26,10 @@ init(Request, State) ->
     Request
   ),
   {ok, Reply, State}.
+
+fetch_page() ->
+  {ok, _StatusCode, _RespHeaders, ClientRef} = hackney:request(get, <<"http://indonesia-kompeten.com">>, [], <<>>, []),
+  {ok, Body} = hackney:body(ClientRef),
+
+  {match, List} = re:run(Body, <<"(<a .+>.+<\/a>)">>, [global, dotall, ungreedy, {capture, all_but_first, binary}]),
+  lists:foreach(fun(Item) -> [Content] = Item, io:format("~s~n", [Content]) end, List).

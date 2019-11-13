@@ -16,7 +16,17 @@ start(_StartType, _StartArgs) ->
 
   Routes = [IndexJoyHost, AnyHost],
   Dispatch = cowboy_router:compile(Routes),
-  {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => Dispatch}}),
+  % {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => Dispatch}}),
+
+  PrivDir = code:priv_dir(idea_execute),
+  ConfigTls = [
+    {port, 443},
+    {cacertfile, PrivDir ++ "/ssl/www_insite_co_id.crt"},
+    {certfile, PrivDir ++ "/ssl/www_insite_co_id.pem"},
+    {keyfile, PrivDir ++ "/ssl/www_insite_co_id.key"}
+  ],
+  {ok, _} = cowboy:start_tls(https, ConfigTls, #{env => #{dispatch => Dispatch}}),
+  %%
 
   init_db(),
   idea_execute_sup:start_link().
