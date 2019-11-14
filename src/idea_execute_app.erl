@@ -5,6 +5,7 @@
 -export([start/2, stop/1, init_db/0]).
 
 start(_StartType, _StartArgs) ->
+  %% Routes
   AnyPath = {'_', handler_any_host_any_path, []},
   AnyHost = {'_', [AnyPath]},
 
@@ -16,17 +17,30 @@ start(_StartType, _StartArgs) ->
 
   Routes = [IndexJoyHost, AnyHost],
   Dispatch = cowboy_router:compile(Routes),
-  % {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => Dispatch}}),
 
+  %% SSL HTTPS
   PrivDir = code:priv_dir(idea_execute),
-  ConfigTls = [
-    {port, 443},
+  InsiteCoIdCert = [
     {cacertfile, PrivDir ++ "/ssl/www_insite_co_id.crt"},
     {certfile, PrivDir ++ "/ssl/www_insite_co_id.pem"},
     {keyfile, PrivDir ++ "/ssl/www_insite_co_id.key"}
   ],
+  DananUtamaComCert = [
+    {cacertfile, PrivDir ++ "/ssl/www_dananutama_com.crt"},
+    {certfile, PrivDir ++ "/ssl/www_dananutama_com.pem"},
+    {keyfile, PrivDir ++ "/ssl/www_dananutama_com.key"}
+  ],
+  ConfigTls = [
+    {port, 443},
+    {sni_hosts, [
+      {"insite.co.id", InsiteCoIdCert},
+      {"dananutama.com", DananUtamaComCert}
+    ]}
+  ],
+
+  %% Start Web Server
+  {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => Dispatch}}),
   {ok, _} = cowboy:start_tls(https, ConfigTls, #{env => #{dispatch => Dispatch}}),
-  %%
 
   init_db(),
   idea_execute_sup:start_link().
