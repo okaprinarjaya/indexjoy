@@ -5,7 +5,7 @@
 -export([start/2, stop/1, init_db/0]).
 
 start(_StartType, _StartArgs) ->
-  %% Routes
+  %% Routes Setup
   AnyPath = {'_', handler_any_host_any_path, []},
   AnyHost = {'_', [AnyPath]},
 
@@ -18,7 +18,7 @@ start(_StartType, _StartArgs) ->
   Routes = [IndexJoyHost, AnyHost],
   Dispatch = cowboy_router:compile(Routes),
 
-  %% SSL HTTPS
+  %% SSL HTTPS Setup
   PrivDir = code:priv_dir(idea_execute),
   InsiteCoIdCert = [
     {cacertfile, PrivDir ++ "/ssl/www_insite_co_id.crt"},
