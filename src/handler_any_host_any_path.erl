@@ -1,6 +1,7 @@
 -module(handler_any_host_any_path).
 
 -export([init/2]).
+-export([handle_404/2]).
 
 -include_lib("hrl_common.hrl").
 
@@ -29,11 +30,11 @@ handle_client_browser(RequestFacilitator, State) ->
 
   case catch maps:get(HostCustomer, ?STATIC_CUSTOMER_HOSTNAME_TO_IPADDR) of
     {badkey, _} ->
-      handle_client_browser_undefined_hostname(RequestFacilitator, State);
+      handle_404(RequestFacilitator, State);
     {'EXIT',{{badkey, _}, _}} ->
-      handle_client_browser_undefined_hostname(RequestFacilitator, State);
+      handle_404(RequestFacilitator, State);
 
-    MachineCustomer ->
+    {MachineCustomer, _} ->
       UserAgentFacilitator = cowboy_req:header(<<"user-agent">>, RequestFacilitator),
       PathRetrieveCustomer = cowboy_req:path(RequestFacilitator),
       RequestHeadersRetrieveCustomer = [
@@ -61,15 +62,6 @@ handle_client_browser(RequestFacilitator, State) ->
       {ok, ReplyFacilitator, State}
   end.
 
-handle_client_browser_undefined_hostname(RequestFacilitator, State) ->
-  ReplyFacilitator = cowboy_req:reply(
-    204,
-    #{<<"content-type">> => <<"text/plain">>},
-    <<>>,
-    RequestFacilitator
-  ),
-  {ok, ReplyFacilitator, State}.
-
 handle_search_engine_crawler_bot(RequestFacilitator, State) ->
   CustomerHost = cowboy_req:host(RequestFacilitator),
   HostCustomerAndPath = [CustomerHost, cowboy_req:path(RequestFacilitator)],
@@ -85,16 +77,16 @@ handle_search_engine_crawler_bot(RequestFacilitator, State) ->
           {ok, ReplyFacilitator, State};
 
         {error, _} ->
-          handle_search_engine_crawler_bot_404(RequestFacilitator, State)
+          handle_404(RequestFacilitator, State)
       end;
 
     notfound ->
       %% It should request and render the original page.
       %% But for now, temporarily will response 404.
-      handle_search_engine_crawler_bot_404(RequestFacilitator, State)
+      handle_404(RequestFacilitator, State)
   end.
 
-handle_search_engine_crawler_bot_404(Request, State) ->
+handle_404(Request, State) ->
   Html = <<"<html><head><title>404 Not Found</title></head><body><h1>404 Not Found</h1></body></html>">>,
   Reply = cowboy_req:reply(404, #{<<"content-type">> => <<"text/html">>}, Html, Request),
 

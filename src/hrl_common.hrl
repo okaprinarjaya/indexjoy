@@ -23,12 +23,18 @@
   {"indexjoy.com", ?SSL_CERTS_INDEXJOY_COM(PrivDir)}
 ]).
 
-%% ROUTES
--define(ROUTE_PATH_LIST_INDEXJOY, [
-  {<<"/">>, handler_indexjoy_root, []},
-  {<<"/create">>, handler_test_test_test, []}
+%% ROUTES SPECIAL FOR INDEXJOY
+-define(INDEXJOY_JOY_AUTO_HTTPS_STATUS, disable_auto_https).
+
+-define(ROUTE_PATH_LIST_INDEXJOY_FOR_REDIRECT, [
+  {'_', handler_indexjoy_root_redirect, []}
 ]).
--define(ROUTE_INDEXJOY_HOST, {<<"indexjoy.com">>, ?ROUTE_PATH_LIST_INDEXJOY}).
+-define(ROUTE_PATH_LIST_INDEXJOY_FOR_HTTPS, [
+  {<<"/">>, handler_indexjoy_root, []}
+]).
+
+-define(ROUTE_INDEXJOY_HOST_REDIRECT, {<<"indexjoy.com">>, ?ROUTE_PATH_LIST_INDEXJOY_FOR_REDIRECT}).
+-define(ROUTE_INDEXJOY_HOST_FOR_HTTPS, {<<"indexjoy.com">>, ?ROUTE_PATH_LIST_INDEXJOY_FOR_HTTPS}).
 
 %% SEARCH ENGINE CRAWLER BOT USER AGENT
 -define(SEARCH_ENGINE_CRAWLER_BOT_LIST, [
@@ -57,6 +63,6 @@
 
 %% CUSTOMER HOSTNAME TO IP ADDR MAPPING
 -define(STATIC_CUSTOMER_HOSTNAME_TO_IPADDR, #{
-  <<"dananutama.com">> => <<"119.81.88.232">>,
-  <<"insite.co.id">> => <<"103.247.9.42">>
+  <<"dananutama.com">> => {<<"119.81.88.232">>, disable_auto_https},
+  <<"insite.co.id">> => {<<"103.247.9.42">>, enable_auto_https}
 }).

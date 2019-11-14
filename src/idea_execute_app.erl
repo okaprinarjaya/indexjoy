@@ -8,20 +8,19 @@
 
 start(_StartType, _StartArgs) ->
   %% Routes Setup
-  AnyPath = {'_', handler_any_host_any_path, []},
-  AnyHost = {'_', [AnyPath]},
-  Routes = [?ROUTE_INDEXJOY_HOST, AnyHost],
+  RoutesForRedirect = [?ROUTE_INDEXJOY_HOST_REDIRECT, {'_', [{'_', handler_any_host_any_path_redirect, []}]}],
+  RoutesForHttps = [?ROUTE_INDEXJOY_HOST_FOR_HTTPS, {'_', [{'_', handler_any_host_any_path, []}]}],
 
-  DispatchRedirect = cowboy_router:compile([{'_', [{'_', handler_any_host_any_path_redirect, []}]}]),
-  Dispatch = cowboy_router:compile(Routes),
+  DispatchForRedirect = cowboy_router:compile(RoutesForRedirect),
+  DispatchForHttps = cowboy_router:compile(RoutesForHttps),
 
   %% SSL HTTPS Setup
   PrivDir = code:priv_dir(idea_execute),
   ConfigTls = [{port, 443}, {sni_hosts, ?SNI_HOSTS(PrivDir)}],
 
   %% Start Web Server
-  {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => DispatchRedirect}}),
-  {ok, _} = cowboy:start_tls(https, ConfigTls, #{env => #{dispatch => Dispatch}}),
+  {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => DispatchForRedirect}}),
+  {ok, _} = cowboy:start_tls(https, ConfigTls, #{env => #{dispatch => DispatchForHttps}}),
 
   init_db(),
   idea_execute_sup:start_link().
