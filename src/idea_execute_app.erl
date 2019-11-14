@@ -2,41 +2,21 @@
 
 -behaviour(application).
 
--export([start/2, stop/1, init_db/0]).
+-export([start/2, stop/1]).
+
+-include_lib("hrl_common.hrl").
 
 start(_StartType, _StartArgs) ->
   %% Routes Setup
   AnyPath = {'_', handler_any_host_any_path, []},
   AnyHost = {'_', [AnyPath]},
 
-  IndexJoyPathList = [
-    {<<"/">>, handler_indexjoy_root, []},
-    {<<"/create">>, handler_test_test_test, []}
-  ],
-  IndexJoyHost = {<<"indexjoy.com">>, IndexJoyPathList},
-
-  Routes = [IndexJoyHost, AnyHost],
+  Routes = [?ROUTE_INDEXJOY_HOST, AnyHost],
   Dispatch = cowboy_router:compile(Routes),
 
   %% SSL HTTPS Setup
   PrivDir = code:priv_dir(idea_execute),
-  InsiteCoIdCert = [
-    {cacertfile, PrivDir ++ "/ssl/www_insite_co_id.crt"},
-    {certfile, PrivDir ++ "/ssl/www_insite_co_id.pem"},
-    {keyfile, PrivDir ++ "/ssl/www_insite_co_id.key"}
-  ],
-  DananUtamaComCert = [
-    {cacertfile, PrivDir ++ "/ssl/www_dananutama_com.crt"},
-    {certfile, PrivDir ++ "/ssl/www_dananutama_com.pem"},
-    {keyfile, PrivDir ++ "/ssl/www_dananutama_com.key"}
-  ],
-  ConfigTls = [
-    {port, 443},
-    {sni_hosts, [
-      {"insite.co.id", InsiteCoIdCert},
-      {"dananutama.com", DananUtamaComCert}
-    ]}
-  ],
+  ConfigTls = [{port, 443}, {sni_hosts, ?SNI_HOSTS(PrivDir)}],
 
   %% Start Web Server
   {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => Dispatch}}),
