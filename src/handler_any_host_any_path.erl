@@ -15,7 +15,6 @@ init(RequestFacilitator, State) ->
 whos_coming_detection_by_user_agent(RequestFacilitator) ->
   case cowboy_req:header(<<"user-agent">>, RequestFacilitator) of
     undefined ->
-      io:format("USER AGENT UNDEFINED~n"),
       'search-engine-crawler';
     UserAgent ->
       io:format("USER AGENT: ~p~n", [UserAgent]),

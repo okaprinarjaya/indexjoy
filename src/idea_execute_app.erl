@@ -10,8 +10,9 @@ start(_StartType, _StartArgs) ->
   %% Routes Setup
   AnyPath = {'_', handler_any_host_any_path, []},
   AnyHost = {'_', [AnyPath]},
-
   Routes = [?ROUTE_INDEXJOY_HOST, AnyHost],
+
+  DispatchRedirect = cowboy_router:compile([{'_', [{'_', handler_any_host_any_path_redirect, []}]}]),
   Dispatch = cowboy_router:compile(Routes),
 
   %% SSL HTTPS Setup
@@ -19,7 +20,7 @@ start(_StartType, _StartArgs) ->
   ConfigTls = [{port, 443}, {sni_hosts, ?SNI_HOSTS(PrivDir)}],
 
   %% Start Web Server
-  {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => Dispatch}}),
+  {ok, _} = cowboy:start_clear(http, [{port, 80}], #{env => #{dispatch => DispatchRedirect}}),
   {ok, _} = cowboy:start_tls(https, ConfigTls, #{env => #{dispatch => Dispatch}}),
 
   init_db(),
