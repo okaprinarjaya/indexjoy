@@ -1,6 +1,6 @@
 -module(handler_test_test_test).
 
--export([init/2, fetch_page/0]).
+-export([init/2, fetch_page/0, create_any_tables_types/0, test_ets/1]).
 
 init(Request, State) ->
   QS = cowboy_req:parse_qs(Request),
@@ -33,3 +33,16 @@ fetch_page() ->
 
   {match, List} = re:run(Body, <<"(<a .+>.+<\/a>)">>, [global, dotall, ungreedy, {capture, all_but_first, binary}]),
   lists:foreach(fun(Item) -> [Content] = Item, io:format("~s~n", [Content]) end, List).
+
+create_any_tables_types() ->
+  lists:foreach(fun test_ets/1, [set, ordered_set, bag, duplicate_bag]).
+
+test_ets(Mode) ->
+  TableId = ets:new(test, [Mode]),
+  ets:insert(TableId, {a, 1}),
+  ets:insert(TableId, {b, 2}),
+  ets:insert(TableId, {a, 1}),
+  ets:insert(TableId, {a, 3}),
+  List = ets:tab2list(TableId),
+  io:format("~-13w => ~p~n", [Mode, List]),
+  ets:delete(TableId).
