@@ -12,14 +12,13 @@
   code_change/3
 ]).
 
--record(local_state, {}).
+-record(local_state, {downloader_server}).
 
-start_link(Hahaha) ->
-  gen_server:start_link(?MODULE, [Hahaha], []).
+start_link(DownloaderServerPid) ->
+  gen_server:start_link(?MODULE, [DownloaderServerPid], []).
 
-init(Hahaha) ->
-  io:format("WORKER STARTED: ~p~n", [Hahaha]),
-  {ok, #local_state{}}.
+init(DownloaderServerPid) ->
+  {ok, #local_state{downloader_server = DownloaderServerPid}}.
 
 handle_cast(_Msg, State) ->
   {noreply, State}.

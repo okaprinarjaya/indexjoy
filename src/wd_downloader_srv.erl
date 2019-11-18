@@ -11,12 +11,11 @@
 start_link(SupervisorPid) ->
   gen_server:start_link(?MODULE, [SupervisorPid], []).
 
-init(SupervisorPid) ->
+init([SupervisorPid]) ->
   {ok, #local_state{urls_queue = queue:new(), supervisor_pid = SupervisorPid}}.
 
 handle_call(add_worker, _From, #local_state{supervisor_pid = SupervisorPid} = State) ->
-  io:format("Hii: ~p~n", [SupervisorPid]),
-  supervisor:start_child(the_supervisor_uhuy, [<<"hahahahahahaha">>]),
+  supervisor:start_child(SupervisorPid, [self()]),
   {reply, message, State}.
 
 handle_cast(message, State) ->

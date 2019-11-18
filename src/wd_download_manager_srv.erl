@@ -32,18 +32,19 @@ handle_call({start_wd_downloader_srv, ServerName, SupervisorPid}, _From, State) 
 
   {reply, ok, State};
 
-handle_call({start_wd_downloader_sup, MFA}, _From, State) ->
+handle_call({start_wd_downloader_sup, ServerName, MFA}, _From, State) ->
+  Id = list_to_atom("wd_downloader_sup_" ++ ServerName),
   ChildSpecs = #{
-    id => wd_downloader_sup_id,
-    start => {wd_downloader_sup, start_link, [MFA]},
+    id => Id,
+    start => {wd_downloader_sup, start_link, [Id, MFA]},
     restart => temporary,
     shutdown => 10000,
     type => supervisor,
     modules => [wd_downloader_sup]
   },
-  {ok, Pid} = supervisor:start_child(idea_execute_sup, ChildSpecs),
+  {ok, _Pid} = supervisor:start_child(idea_execute_sup, ChildSpecs),
 
-  {reply, {ok, Pid},  State};
+  {reply, {ok, Id},  State};
 
 handle_call({ets_lookup, ServerNameBinary}, _From, State) ->
   #local_state{table_id = TableId} = State,
@@ -68,7 +69,7 @@ code_change(_OldVsn, State, _Extra) ->
 
 start_new_downloader(ServerName) ->
   MFA = {wd_downloader_wrk, start_link, []},
-  {ok, SupervisorPid} = gen_server:call(wd_download_manager_server, {start_wd_downloader_sup, MFA}),
+  {ok, SupervisorPid} = gen_server:call(wd_download_manager_server, {start_wd_downloader_sup, ServerName, MFA}),
   gen_server:call(wd_download_manager_server, {start_wd_downloader_srv, ServerName, SupervisorPid}),
   ok.
 
