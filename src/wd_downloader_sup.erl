@@ -1,4 +1,4 @@
--module(wd_download_sup).
+-module(wd_downloader_sup).
 
 -behaviour(supervisor).
 
@@ -8,8 +8,8 @@
 
 -define(SERVER, ?MODULE).
 
-start_link({M,F,A}) ->
-  supervisor:start_link({local, ?SERVER}, ?MODULE, {M,F,A}).
+start_link(MFA) ->
+  supervisor:start_link({local, the_supervisor_uhuy}, ?MODULE, MFA).
 
 init({M, F, A}) ->
   SupFlags = #{
@@ -18,6 +18,7 @@ init({M, F, A}) ->
     period => 10
   },
   ChildSpecs = [
-    {wd_download_wrk_id, {M, F, A}, temporary, 5000, worker, [M]}
+    {wd_downloader_wrk_id, {M, F, A}, temporary, 5000, worker, [M]}
   ],
+
   {ok, {SupFlags, ChildSpecs}}.
