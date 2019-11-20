@@ -1,4 +1,4 @@
--module(wd_downloader_sup).
+-module(wd_downloader_wrk_sup).
 
 -behaviour(supervisor).
 

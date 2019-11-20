@@ -4,19 +4,19 @@
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([start_new_downloader/1, ets_lookup/1]).
+-export([start_new_downloader/1, add_downloader_worker/1]).
 
 -record(local_state, {table_id}).
 
 start_link() ->
-  gen_server:start_link({local, wd_download_manager_server}, ?MODULE, [], []).
+  gen_server:start_link({local, download_manager_srv}, ?MODULE, [], []).
 
 init(_Args) ->
   TableId = ets:new(download_manager, [set, public]),
   {ok, #local_state{table_id = TableId}}.
 
-handle_call({start_wd_downloader_srv, ServerName, SupervisorPid}, _From, State) ->
-  Id = "wd_downloader_srv_" ++ ServerName,
+handle_call({start_wd_downloader_srv, WebsiteHostname, SupervisorPid}, _From, State) ->
+  Id = WebsiteHostname ++ "_srv",
   ChildSpecs = #{
     id => list_to_atom(Id),
     start => {wd_downloader_srv, start_link, [SupervisorPid]},
@@ -28,29 +28,29 @@ handle_call({start_wd_downloader_srv, ServerName, SupervisorPid}, _From, State) 
   {ok, Pid} = supervisor:start_child(idea_execute_sup, ChildSpecs),
 
   #local_state{table_id = TableId} = State,
-  ets:insert(TableId, {list_to_binary(ServerName), Pid}),
+  ets:insert(TableId, {list_to_binary(WebsiteHostname), Pid}),
 
   {reply, ok, State};
 
-handle_call({start_wd_downloader_sup, ServerName, MFA}, _From, State) ->
-  Id = list_to_atom("wd_downloader_sup_" ++ ServerName),
+handle_call({start_wd_downloader_wrk_sup, WebsiteHostname, MFA}, _From, State) ->
+  Id = list_to_atom(WebsiteHostname ++ "_sup"),
   ChildSpecs = #{
     id => Id,
-    start => {wd_downloader_sup, start_link, [Id, MFA]},
+    start => {wd_downloader_wrk_sup, start_link, [Id, MFA]},
     restart => temporary,
     shutdown => 10000,
     type => supervisor,
-    modules => [wd_downloader_sup]
+    modules => [wd_downloader_wrk_sup]
   },
   {ok, _Pid} = supervisor:start_child(idea_execute_sup, ChildSpecs),
 
   {reply, {ok, Id},  State};
 
-handle_call({ets_lookup, ServerNameBinary}, _From, State) ->
+handle_call({get_downloader_srv_pid, WebsiteHostnameBin}, _From, State) ->
   #local_state{table_id = TableId} = State,
-  Result = ets:lookup(TableId, ServerNameBinary),
+  [{_, DownloaderSrvPid}] = ets:lookup(TableId, WebsiteHostnameBin),
 
-  {reply, {ok, Result}, State}.
+  {reply, {ok, DownloaderSrvPid}, State}.
 
 handle_cast(_Message, State) ->
   {noreply, State}.
@@ -67,13 +67,24 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
-start_new_downloader(ServerName) ->
+start_new_downloader(WebsiteHostname) ->
   MFA = {wd_downloader_wrk, start_link, []},
-  {ok, SupervisorPid} = gen_server:call(wd_download_manager_server, {start_wd_downloader_sup, ServerName, MFA}),
-  gen_server:call(wd_download_manager_server, {start_wd_downloader_srv, ServerName, SupervisorPid}),
+  %% Create new downloader worker supervisor
+  {ok, SupervisorPid} = gen_server:call(
+    download_manager_srv,
+    {start_wd_downloader_wrk_sup, WebsiteHostname, MFA}
+  ),
+  %% Create new downloader server
+  ok = gen_server:call(
+    download_manager_srv,
+    {start_wd_downloader_srv, WebsiteHostname, SupervisorPid}
+  ),
   ok.
 
-ets_lookup(ServerName) ->
-  ServerNameBinary = list_to_binary(ServerName),
-  {ok, Result} = gen_server:call(wd_download_manager_server, {ets_lookup, ServerNameBinary}),
-  Result.
+add_downloader_worker(WebsiteHostname) ->
+  {ok, DownloaderSrvPid} = gen_server:call(
+    download_manager_srv,
+    {get_downloader_srv_pid, list_to_binary(WebsiteHostname)}
+  ),
+  ok = gen_server:call(DownloaderSrvPid, add_downloader_worker),
+  ok.

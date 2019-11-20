@@ -12,13 +12,13 @@
   code_change/3
 ]).
 
--record(local_state, {downloader_server}).
+-record(local_state, {downloader_srv}).
 
 start_link(DownloaderServerPid) ->
   gen_server:start_link(?MODULE, [DownloaderServerPid], []).
 
 init(DownloaderServerPid) ->
-  {ok, #local_state{downloader_server = DownloaderServerPid}}.
+  {ok, #local_state{downloader_srv = DownloaderServerPid}}.
 
 handle_cast(_Msg, State) ->
   {noreply, State}.
