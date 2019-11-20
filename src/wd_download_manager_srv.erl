@@ -4,7 +4,7 @@
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([start_new_downloader/1, add_downloader_worker/1]).
+-export([start_new_downloader/1, add_downloader_worker/1, download/1]).
 
 -record(local_state, {table_id}).
 
@@ -88,3 +88,17 @@ add_downloader_worker(WebsiteHostname) ->
   ),
   ok = gen_server:call(DownloaderSrvPid, add_downloader_worker),
   ok.
+
+download(WebsiteHostname) ->
+  {ok, DownloaderSrvPid} = gen_server:call(
+    download_manager_srv,
+    {get_downloader_srv_pid, list_to_binary(WebsiteHostname)}
+  ),
+  Reply = gen_server:call(DownloaderSrvPid, initial_download),
+  case Reply of
+    ok ->
+      gen_server:cast(DownloaderSrvPid, coordinate_all_workers);
+
+    already_started ->
+      io:format("Download already started.~n")
+  end.
