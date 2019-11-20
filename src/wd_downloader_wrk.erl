@@ -17,14 +17,28 @@
 start_link(DownloaderServerPid) ->
   gen_server:start_link(?MODULE, [DownloaderServerPid], []).
 
-init(DownloaderServerPid) ->
+init([DownloaderServerPid]) ->
   {ok, #local_state{downloader_srv = DownloaderServerPid}}.
 
-handle_cast(_Msg, State) ->
-  {noreply, State}.
+handle_call({initial_download, IndexPage}, _From, State) ->
+  UrlsListMock = [
+    <<"http://indonesia-kompeten.com/a">>,
+    <<"http://indonesia-kompeten.com/b">>,
+    <<"http://indonesia-kompeten.com/c">>,
+    <<"http://indonesia-kompeten.com/d">>,
+    <<"http://indonesia-kompeten.com/e">>
+  ],
+  io:format("Downloading: ~p~n", [IndexPage]),
+  {reply, {ok, UrlsListMock}, State}.
 
-handle_call(_Request, _From, State) ->
-  {reply, ok, State}.
+handle_cast(gogogo, #local_state{downloader_srv = DownloaderServerPid} = State) ->
+  gen_server:cast(DownloaderServerPid, {gimme_next_page, [], self()}),
+  {noreply, State};
+
+handle_cast({download, Url}, #local_state{downloader_srv = DownloaderServerPid} = State) ->
+  io:format("~p downloading: ~p...~n", [self(), Url]),
+  gen_server:cast(DownloaderServerPid, {gimme_next_page, [], self()}),
+  {noreply, State}.
 
 handle_info(_Info, State) ->
   {noreply, State}.
