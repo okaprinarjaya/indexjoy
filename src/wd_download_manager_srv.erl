@@ -4,7 +4,7 @@
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([start_new_downloader/1, add_downloader_workers/1, download/1]).
+-export([start_new_downloader/2, add_downloader_workers/1, download/1]).
 
 -record(local_state, {table_id}).
 
@@ -15,20 +15,20 @@ init(_Args) ->
   TableId = ets:new(download_manager, [set, public]),
   {ok, #local_state{table_id = TableId}}.
 
-handle_call({start_wd_downloader_srv, WebsiteHostname, SupervisorPid}, _From, State) ->
+handle_call({start_wd_downloader_srv, WebsiteHostname, Depth, SupervisorPid}, _From, #local_state{table_id = TableId} = State) ->
   Id = WebsiteHostname ++ "_srv",
   ChildSpecs = #{
     id => list_to_atom(Id),
-    start => {wd_downloader_srv, start_link, [SupervisorPid, WebsiteHostname]},
+    start => {wd_downloader_srv, start_link, [WebsiteHostname, Depth, SupervisorPid]},
     restart => permanent,
     shutdown => 5000,
     type => worker,
     modules => [wd_downloader_srv]
   },
   {ok, Pid} = supervisor:start_child(idea_execute_sup, ChildSpecs),
+  Ref = erlang:monitor(process, Pid),
 
-  #local_state{table_id = TableId} = State,
-  ets:insert(TableId, {list_to_binary(WebsiteHostname), Pid}),
+  ets:insert(TableId, {list_to_binary(WebsiteHostname), {Pid, Ref}}),
   {reply, ok, State};
 
 handle_call({start_wd_downloader_wrk_sup, WebsiteHostname, MFA}, _From, State) ->
@@ -46,7 +46,7 @@ handle_call({start_wd_downloader_wrk_sup, WebsiteHostname, MFA}, _From, State) -
 
 handle_call({get_downloader_srv_pid, WebsiteHostnameBin}, _From, State) ->
   #local_state{table_id = TableId} = State,
-  [{_, DownloaderSrvPid}] = ets:lookup(TableId, WebsiteHostnameBin),
+  [{_, {DownloaderSrvPid, _MonitorRef}}] = ets:lookup(TableId, WebsiteHostnameBin),
   {reply, {ok, DownloaderSrvPid}, State}.
 
 handle_cast(_Message, State) ->
@@ -61,17 +61,19 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
-start_new_downloader(WebsiteHostname) ->
+start_new_downloader(WebsiteHostname, Depth) ->
   MFA = {wd_downloader_wrk, start_link, []},
+
   %% Create new downloader worker supervisor
   {ok, SupervisorPid} = gen_server:call(
     download_manager_srv,
     {start_wd_downloader_wrk_sup, WebsiteHostname, MFA}
   ),
+
   %% Create new downloader server
   ok = gen_server:call(
     download_manager_srv,
-    {start_wd_downloader_srv, WebsiteHostname, SupervisorPid}
+    {start_wd_downloader_srv, WebsiteHostname, Depth, SupervisorPid}
   ),
   ok.
 
@@ -88,7 +90,7 @@ download(WebsiteHostname) ->
 
   case Reply of
     ok ->
-      gen_server:call(DownloaderSrvPid, coordinate_all_workers);
+      gen_server:cast(DownloaderSrvPid, coordinate_all_workers);
 
     already_started ->
       io:format("Download already started.~n")
