@@ -15,11 +15,12 @@ init(_Args) ->
   TableId = ets:new(download_manager, [set, public]),
   {ok, #local_state{table_id = TableId}}.
 
-handle_call({start_wd_downloader_srv, WebsiteHostname, Depth, SupervisorPid}, _From, #local_state{table_id = TableId} = State) ->
+handle_call({start_wd_downloader_srv, WebsiteHostname, DepthMaximumSetting, SupervisorPid}, _From, State) ->
+  #local_state{table_id = TableId} = State,
   Id = WebsiteHostname ++ "_srv",
   ChildSpecs = #{
     id => list_to_atom(Id),
-    start => {wd_downloader_srv, start_link, [WebsiteHostname, Depth, SupervisorPid]},
+    start => {wd_downloader_srv, start_link, [WebsiteHostname, DepthMaximumSetting, SupervisorPid]},
     restart => permanent,
     shutdown => 5000,
     type => worker,
@@ -61,7 +62,7 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
-start_new_downloader(WebsiteHostname, Depth) ->
+start_new_downloader(WebsiteHostname, DepthMaximumSetting) ->
   MFA = {wd_downloader_wrk, start_link, []},
 
   %% Create new downloader worker supervisor
@@ -73,7 +74,7 @@ start_new_downloader(WebsiteHostname, Depth) ->
   %% Create new downloader server
   ok = gen_server:call(
     download_manager_srv,
-    {start_wd_downloader_srv, WebsiteHostname, Depth, SupervisorPid}
+    {start_wd_downloader_srv, WebsiteHostname, DepthMaximumSetting, SupervisorPid}
   ),
   ok.
 
