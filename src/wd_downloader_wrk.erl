@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/2]).
+-export([start_link/4]).
 -export([
   init/1,
   handle_call/3,
@@ -14,16 +14,27 @@
 
 -record(local_state, {downloader_srv, depth_maximum_setting, website_hostname, website_http_type}).
 
-start_link(DownloaderServerPid, DepthMaximumSetting) ->
-  gen_server:start_link(?MODULE, [DownloaderServerPid, DepthMaximumSetting], []).
+start_link(DownloaderSrvPid, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting) ->
+  gen_server:start_link(
+    ?MODULE,
+    [DownloaderSrvPid, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting],
+    []
+  ).
 
-init([DownloaderServerPid, DepthMaximumSetting]) ->
-  {ok, #local_state{downloader_srv = DownloaderServerPid, depth_maximum_setting = DepthMaximumSetting}}.
+init([DownloaderSrvPid, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting]) ->
+  {ok, #local_state{
+    downloader_srv = DownloaderSrvPid,
+    depth_maximum_setting = DepthMaximumSetting,
+    website_hostname = WebsiteHostnameBin,
+    website_http_type = WebsiteHttpTypeBin
+  }}.
 
-handle_call({initial_download, IndexPage, WebsiteHostnameBin, WebsiteHttpTypeBin}, _From, State) ->
+handle_call({initial_download, IndexPage}, _From, State) ->
+  #local_state{website_hostname = WebsiteHostnameBin, website_http_type = WebsiteHttpTypeBin} = State,
   Headers = [
     {<<"User-Agent">>, <<"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:70.0) Gecko/20100101 Firefox/70.0">>}
   ],
+
   case hackney:request(get, IndexPage, Headers, <<>>, []) of
     {ok, _StatusCode, _RespHeaders, ClientRef} ->
       {ok, Body} = hackney:body(ClientRef),
@@ -41,21 +52,9 @@ handle_call({initial_download, IndexPage, WebsiteHostnameBin, WebsiteHttpTypeBin
       {reply, timeout, State}
   end.
 
-handle_cast({gogogo, WebsiteHostnameBin, WebsiteHttpTypeBin}, State) ->
-  #local_state{downloader_srv = DownloaderServerPid} = State,
-  gen_server:cast(DownloaderServerPid, {gimme_next_page, {[], undefined}, self()}),
-  {noreply, State#local_state{website_hostname = WebsiteHostnameBin, website_http_type = WebsiteHttpTypeBin}};
-
-handle_cast(complete, State) ->
-  {stop, shutdown, State};
-
-handle_cast(retry, #local_state{downloader_srv = DownloaderServerPid} = State) ->
-  erlang:send_after(5000, DownloaderServerPid, {gimme_next_page_info, self()}),
-  {noreply, State};
-
 handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
   #local_state{
-    downloader_srv = DownloaderServerPid,
+    downloader_srv = DownloaderSrvPid,
     depth_maximum_setting = DepthMaximumSetting,
     website_hostname = WebsiteHostnameBin,
     website_http_type = WebsiteHttpTypeBin
@@ -84,27 +83,38 @@ handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
                 UrlsList
               ),
               Message = {gimme_next_page, {UrlsListWithDepthLevel, FinishedDownloadProcessDepthStateNew}, self()},
-              gen_server:cast(DownloaderServerPid, Message),
+              gen_server:cast(DownloaderSrvPid, Message),
               {noreply, State};
 
             true ->
               %% Because the current page doesn't contain new urls so the urls extractor return empty list.
               %% For the rest we only need to process next url at the queue until the queue become empty.
-              gen_server:cast(DownloaderServerPid, {gimme_next_page, {[], undefined}, self()}),
+              gen_server:cast(DownloaderSrvPid, {gimme_next_page, {[], undefined}, self()}),
               {noreply, State}
           end;
 
         true ->
           %% We don't need to get new urls anymore because we're already reach the max depth.
           %% For the rest we only need to process next url at the queue until the queue become empty.
-          gen_server:cast(DownloaderServerPid, {gimme_next_page, {[], undefined}, self()}),
+          gen_server:cast(DownloaderSrvPid, {gimme_next_page, {[], undefined}, self()}),
           {noreply, State}
       end;
 
     {error,timeout} ->
-      gen_server:cast(DownloaderServerPid, {requeue, UrlPath, CurrentProcessedUrlDepthState, self()}),
+      gen_server:cast(DownloaderSrvPid, {requeue, UrlPath, CurrentProcessedUrlDepthState, self()}),
       {noreply, State}
-  end.
+  end;
+
+handle_cast(gogogo, #local_state{downloader_srv = DownloaderSrvPid} = State) ->
+  gen_server:cast(DownloaderSrvPid, {gimme_next_page, {[], undefined}, self()}),
+  {noreply, State};
+
+handle_cast(retry, #local_state{downloader_srv = DownloaderSrvPid} = State) ->
+  erlang:send_after(5000, DownloaderSrvPid, {gimme_next_page_info, self()}),
+  {noreply, State};
+
+handle_cast(complete, State) ->
+  {stop, shutdown, State}.
 
 handle_info(_Info, State) ->
   {noreply, State}.

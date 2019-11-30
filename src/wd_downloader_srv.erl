@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/3]).
+-export([start_link/4]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -define(MAX_WORKERS, 5).
@@ -19,10 +19,14 @@
   initial_download_timeout_count
 }).
 
-start_link(WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid) ->
-  gen_server:start_link(?MODULE, [WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid], []).
+start_link(WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid) ->
+  gen_server:start_link(
+    ?MODULE,
+    [WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid],
+    []
+  ).
 
-init([WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid]) ->
+init([WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid]) ->
   TableId = ets:new(downloader_srv, [set, public]),
 
   {ok, #local_state{
@@ -30,6 +34,7 @@ init([WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid]) ->
     depth_maximum_setting = DepthMaximumSetting,
     depth_reach = 0,
     website_hostname = WebsiteHostnameBin,
+    website_http_type = WebsiteHttpTypeBin,
     workers = [],
     supervisor_pid = SupervisorPid,
     table_id_downloader_srv = TableId,
@@ -38,7 +43,6 @@ init([WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid]) ->
 
 handle_call(add_downloader_workers, _From, State) ->
   #local_state{
-    depth_maximum_setting = DepthMaximumSetting,
     workers = Workers,
     supervisor_pid = SupervisorPid
   } = State,
@@ -48,14 +52,15 @@ handle_call(add_downloader_workers, _From, State) ->
       {reply, workers_already_added, State};
 
     true ->
-      WorkersNew = [worker_starter(SupervisorPid, DepthMaximumSetting) || _ <- lists:seq(1, ?MAX_WORKERS)],
+      WorkersNew = [worker_starter(SupervisorPid) || _ <- lists:seq(1, ?MAX_WORKERS)],
       {reply, ok, State#local_state{workers = lists:append(WorkersNew, Workers)}}
   end;
 
-handle_call({initial_download, WebsiteHttpTypeBin}, _From, State) ->
+handle_call(initial_download, _From, State) ->
   #local_state{
     initial_download = InitialDownload,
     website_hostname = WebsiteHostnameBin,
+    website_http_type = WebsiteHttpTypeBin,
     workers = Workers,
     initial_download_timeout_count = InitialDownloadTimeoutCount
   } = State,
@@ -66,7 +71,7 @@ handle_call({initial_download, WebsiteHttpTypeBin}, _From, State) ->
       IndexPage = [WebsiteHttpTypeBin, <<"://">>, WebsiteHostnameBin, <<"/">>],
       Reply = gen_server:call(
         WorkerPid,
-        {initial_download, iolist_to_binary(IndexPage), WebsiteHostnameBin, WebsiteHttpTypeBin}
+        {initial_download, iolist_to_binary(IndexPage)}
       ),
 
       case Reply of
@@ -88,13 +93,8 @@ handle_call({initial_download, WebsiteHttpTypeBin}, _From, State) ->
       {reply, already_started, State}
   end.
 
-handle_cast(coordinate_all_workers, State) ->
-  #local_state{
-    workers = Workers,
-    website_hostname = WebsiteHostnameBin,
-    website_http_type = WebsiteHttpTypeBin
-  } = State,
-  gogogo(Workers, WebsiteHostnameBin, WebsiteHttpTypeBin),
+handle_cast(coordinate_all_workers, #local_state{workers = Workers} = State) ->
+  gogogo(Workers),
   {noreply, State};
 
 handle_cast({gimme_next_page, {[], undefined}, Sender}, State) ->
@@ -184,17 +184,17 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
-worker_starter(SupervisorPid, DepthMaximumSetting) ->
-  {ok, Pid} = supervisor:start_child(SupervisorPid, [self(), DepthMaximumSetting]),
+worker_starter(SupervisorPid) ->
+  {ok, Pid} = supervisor:start_child(SupervisorPid, []),
   Ref = erlang:monitor(process, Pid),
   {Pid, Ref}.
 
-gogogo([], _WebsiteHostnameBin, _WebsiteHttpType) -> ok;
-gogogo(Workers, WebsiteHostnameBin, WebsiteHttpType) ->
+gogogo([]) -> ok;
+gogogo(Workers) ->
   [Worker | WorkersTail] = Workers,
   {WorkerPid, _Ref} = Worker,
-  gen_server:cast(WorkerPid, {gogogo, WebsiteHostnameBin, WebsiteHttpType}),
-  gogogo(WorkersTail, WebsiteHostnameBin, WebsiteHttpType).
+  gen_server:cast(WorkerPid, gogogo),
+  gogogo(WorkersTail).
 
 pick_task_for_worker(TableIdDownloaderSrv, UrlsQueue, Sender) ->
   case queue:out(UrlsQueue) of

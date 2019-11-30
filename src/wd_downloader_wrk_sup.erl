@@ -8,8 +8,8 @@
 
 -define(SERVER, ?MODULE).
 
-start_link(Id, MFA) ->
-  supervisor:start_link({local, Id}, ?MODULE, MFA).
+start_link(SupervisorPid, MFA) ->
+  supervisor:start_link({local, SupervisorPid}, ?MODULE, MFA).
 
 init({M, F, A}) ->
   SupFlags = #{

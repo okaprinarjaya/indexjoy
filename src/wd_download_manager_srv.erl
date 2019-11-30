@@ -4,7 +4,7 @@
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([start_new_downloader/2, add_downloader_workers/1, download/2]).
+-export([start_new_downloader/3, add_downloader_workers/1, download/1]).
 
 -record(local_state, {table_id}).
 
@@ -15,36 +15,44 @@ init(_Args) ->
   TableId = ets:new(download_manager, [set, public]),
   {ok, #local_state{table_id = TableId}}.
 
-handle_call({start_wd_downloader_srv, WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid}, _From, State) ->
+handle_call(
+  {start_wd_downloader_srv, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid},
+  _From,
+  State
+) ->
   #local_state{table_id = TableId} = State,
   Id = iolist_to_binary([WebsiteHostnameBin, <<"_srv">>]),
+
   ChildSpecs = #{
     id => binary_to_atom(Id, utf8),
-    start => {wd_downloader_srv, start_link, [WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid]},
+    start => {
+      wd_downloader_srv,
+      start_link,
+      [WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid]
+    },
     restart => permanent,
     shutdown => 5000,
     type => worker,
     modules => [wd_downloader_srv]
   },
-  {ok, Pid} = supervisor:start_child(idea_execute_sup, ChildSpecs),
-  Ref = erlang:monitor(process, Pid),
 
-  ets:insert(TableId, {WebsiteHostnameBin, {Pid, Ref}}),
-  {reply, ok, State};
+  {ok, DownloaderSrvPid} = supervisor:start_child(idea_execute_sup, ChildSpecs),
+  DownloaderSrvRef = erlang:monitor(process, DownloaderSrvPid),
 
-handle_call({start_wd_downloader_wrk_sup, WebsiteHostnameBin, MFA}, _From, State) ->
-  Id = iolist_to_binary([WebsiteHostnameBin, <<"_sup">>]),
-  IdAtom = binary_to_atom(Id, utf8),
+  ets:insert(TableId, {WebsiteHostnameBin, {DownloaderSrvPid, DownloaderSrvRef}}),
+  {reply, {ok, DownloaderSrvPid}, State};
+
+handle_call({start_wd_downloader_wrk_sup, SupervisorPid, MFA}, _From, State) ->
   ChildSpecs = #{
-    id => IdAtom,
-    start => {wd_downloader_wrk_sup, start_link, [IdAtom, MFA]},
+    id => SupervisorPid,
+    start => {wd_downloader_wrk_sup, start_link, [SupervisorPid, MFA]},
     restart => temporary,
     shutdown => 10000,
     type => supervisor,
     modules => [wd_downloader_wrk_sup]
   },
   {ok, _Pid} = supervisor:start_child(idea_execute_sup, ChildSpecs),
-  {reply, {ok, IdAtom},  State};
+  {reply, ok, State};
 
 handle_call({get_downloader_srv_pid, WebsiteHostnameBin}, _From, State) ->
   #local_state{table_id = TableId} = State,
@@ -63,20 +71,27 @@ terminate(_Reason, _State) ->
 code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
-start_new_downloader(WebsiteHostname, DepthMaximumSetting) ->
+start_new_downloader(WebsiteHostname, WebsiteHttpType, DepthMaximumSetting) ->
   WebsiteHostnameBin = list_to_binary(WebsiteHostname),
-  MFA = {wd_downloader_wrk, start_link, []},
-
-  %% Create the new supervisor of downloader worker
-  {ok, SupervisorPid} = gen_server:call(
-    download_manager_srv,
-    {start_wd_downloader_wrk_sup, WebsiteHostnameBin, MFA}
-  ),
+  WebsiteHttpTypeBin = list_to_binary(WebsiteHttpType),
+  SupervisorPid = binary_to_atom(iolist_to_binary([WebsiteHostnameBin, <<"_sup">>]), utf8),
 
   %% Create new downloader server
+  {ok, DownloaderSrvPid} = gen_server:call(
+    download_manager_srv,
+    {start_wd_downloader_srv, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid}
+  ),
+
+  MFA = {
+    wd_downloader_wrk,
+    start_link,
+    [DownloaderSrvPid, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting]
+  },
+
+  %% Create the new supervisor of downloader worker
   ok = gen_server:call(
     download_manager_srv,
-    {start_wd_downloader_srv, WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid}
+    {start_wd_downloader_wrk_sup, SupervisorPid, MFA}
   ),
   ok.
 
@@ -88,11 +103,10 @@ add_downloader_workers(WebsiteHostname) ->
     workers_already_added -> io:format("Workers already added.~n")
   end.
 
-download(WebsiteHostname, WebsiteHttpType) ->
+download(WebsiteHostname) ->
   WebsiteHostnameBin = list_to_binary(WebsiteHostname),
-  WebsiteHttpTypeBin = list_to_binary(WebsiteHttpType),
   DownloaderSrvPid = downloader_srv_pid(WebsiteHostnameBin),
-  Reply = gen_server:call(DownloaderSrvPid, {initial_download, WebsiteHttpTypeBin}),
+  Reply = gen_server:call(DownloaderSrvPid, initial_download),
 
   case Reply of
     ok ->
@@ -102,7 +116,7 @@ download(WebsiteHostname, WebsiteHttpType) ->
       if
         InitialDownloadTimeoutCount =< 3 ->
           io:format("Timeout for initial download. Now retrying...~n"),
-          download(WebsiteHostname, WebsiteHttpType);
+          download(WebsiteHostname);
 
         true ->
           io:format("It's been 3 times timeout when doing initial download.~n"),
