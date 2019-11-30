@@ -18,7 +18,6 @@ extract_urls(Contents, WebsiteHostnameBin, WebsiteHttpTypeBin) ->
       UrlLen = string:length(Url),
       StartLen = string:length(WebsiteUrlPrefix),
       EndLen = UrlLen - StartLen,
-
       string:slice(Url, StartLen + 1, EndLen)
     end,
     List2
@@ -30,12 +29,10 @@ save_page(Contents, UrlPath) ->
 
   case file:write_file(binary_to_list(Filename), Contents) of
     ok -> ok;
-    {error, Reason} -> io:format("ERROR WRITING FILE! ~p~n", [Reason])
+    {error, Reason} -> io:format("Error writing file: ~p~n", [Reason])
   end.
 
 create_filename(UrlPath) ->
   ReplaceWithDashIoL = string:replace(UrlPath, "/", "-", all),
   DashedBin = iolist_to_binary(ReplaceWithDashIoL),
-  Fck = string:slice(DashedBin, 1, string:length(DashedBin)),
-  Fck.
-
+  string:slice(DashedBin, 1, string:length(DashedBin)).

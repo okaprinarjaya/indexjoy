@@ -97,8 +97,19 @@ download(WebsiteHostname, WebsiteHttpType) ->
   case Reply of
     ok ->
       gen_server:cast(DownloaderSrvPid, coordinate_all_workers);
-    timeout ->
-      io:format("Timeout for initial download~n");
+
+    {timeout, InitialDownloadTimeoutCount} ->
+      if
+        InitialDownloadTimeoutCount =< 3 ->
+          io:format("Timeout for initial download. Now retrying...~n"),
+          download(WebsiteHostname, WebsiteHttpType);
+
+        true ->
+          io:format("It's been 3 times timeout when doing initial download.~n"),
+          io:format("It seems the target website is in problem. Or you have internet connection problem.~n"),
+          io:format("Cannot finish initial download. The downloader cannot continue.~n")
+      end;
+
     already_started ->
       io:format("Download already started.~n")
   end.

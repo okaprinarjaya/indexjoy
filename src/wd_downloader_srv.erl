@@ -14,20 +14,26 @@
   website_http_type,
   urls_queue,
   workers,
-  supervisor_pid
+  supervisor_pid,
+  table_id_downloader_srv,
+  initial_download_timeout_count
 }).
 
 start_link(WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid) ->
   gen_server:start_link(?MODULE, [WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid], []).
 
 init([WebsiteHostnameBin, DepthMaximumSetting, SupervisorPid]) ->
+  TableId = ets:new(downloader_srv, [set, public]),
+
   {ok, #local_state{
     initial_download = true,
     depth_maximum_setting = DepthMaximumSetting,
     depth_reach = 0,
     website_hostname = WebsiteHostnameBin,
     workers = [],
-    supervisor_pid = SupervisorPid
+    supervisor_pid = SupervisorPid,
+    table_id_downloader_srv = TableId,
+    initial_download_timeout_count = 0
   }}.
 
 handle_call(add_downloader_workers, _From, State) ->
@@ -50,7 +56,8 @@ handle_call({initial_download, WebsiteHttpTypeBin}, _From, State) ->
   #local_state{
     initial_download = InitialDownload,
     website_hostname = WebsiteHostnameBin,
-    workers = Workers
+    workers = Workers,
+    initial_download_timeout_count = InitialDownloadTimeoutCount
   } = State,
 
   case InitialDownload of
@@ -72,7 +79,9 @@ handle_call({initial_download, WebsiteHttpTypeBin}, _From, State) ->
           }};
 
         timeout ->
-          {reply, timeout, State}
+          {reply, {timeout, InitialDownloadTimeoutCount}, State#local_state{
+            initial_download_timeout_count = InitialDownloadTimeoutCount + 1
+          }}
       end;
 
     false ->
@@ -88,9 +97,22 @@ handle_cast(coordinate_all_workers, State) ->
   gogogo(Workers, WebsiteHostnameBin, WebsiteHttpTypeBin),
   {noreply, State};
 
-handle_cast({gimme_next_page, {[], undefined}, Sender}, #local_state{urls_queue = UrlsQueue} = State) ->
-  UrlsQueueNextState = give_task_to_worker(UrlsQueue, Sender),
-  {noreply, State#local_state{urls_queue = UrlsQueueNextState}};
+handle_cast({gimme_next_page, {[], undefined}, Sender}, State) ->
+  #local_state{urls_queue = UrlsQueue, table_id_downloader_srv = TableIdDownloaderSrv} = State,
+
+  case pick_task_for_worker(TableIdDownloaderSrv, UrlsQueue, Sender) of
+    {{value, {UrlPath, CurrentProcessedUrlDepthState}}, UrlsQueueNextState} ->
+      gen_server:cast(Sender, {download, UrlPath, CurrentProcessedUrlDepthState}),
+      {noreply, State#local_state{urls_queue = UrlsQueueNextState}};
+
+    {empty, UrlsQueueNextState} ->
+      gen_server:cast(Sender, retry),
+      {noreply, State#local_state{urls_queue = UrlsQueueNextState}};
+
+    {retry, UrlsQueueNextState} ->
+      gen_server:cast(Sender, retry),
+      {noreply, State#local_state{urls_queue = UrlsQueueNextState}}
+  end;
 
 handle_cast({gimme_next_page, {UrlsList, FinishedDownloadProcessDepthStateNew}, Sender}, State)
   when length(UrlsList) > 0 ->
@@ -113,13 +135,20 @@ handle_cast({gimme_next_page, {UrlsList, FinishedDownloadProcessDepthStateNew}, 
           depth_reach = FinishedDownloadProcessDepthStateNew,
           urls_queue = UrlsQueueNextState
         }}
-    end.
+    end;
+
+handle_cast({requeue, UrlPath, CurrentProcessedUrlDepthState, Sender}, State) ->
+  #local_state{urls_queue = UrlsQueue} = State,
+  UrlsQueueNextState = queue:in({UrlPath, CurrentProcessedUrlDepthState}, UrlsQueue),
+  gen_server:cast(Sender, retry),
+  {noreply, State#local_state{urls_queue = UrlsQueueNextState}}.
 
 handle_info({gimme_next_page_info, Sender}, State) ->
   #local_state{
     depth_maximum_setting = DepthMaximumSetting,
     depth_reach = DepthReach,
-    urls_queue = UrlsQueue
+    urls_queue = UrlsQueue,
+    table_id_downloader_srv = TableIdDownloaderSrv
   } = State,
 
   UrlsQueueLen = queue:len(UrlsQueue),
@@ -130,8 +159,19 @@ handle_info({gimme_next_page_info, Sender}, State) ->
       {noreply, State};
 
     true ->
-      UrlsQueueNextState = give_task_to_worker(UrlsQueue, Sender),
-      {noreply, State#local_state{urls_queue = UrlsQueueNextState}}
+      case pick_task_for_worker(TableIdDownloaderSrv, UrlsQueue, Sender) of
+        {{value, {UrlPath, CurrentProcessedUrlDepthState}}, UrlsQueueNextState} ->
+          gen_server:cast(Sender, {download, UrlPath, CurrentProcessedUrlDepthState}),
+          {noreply, State#local_state{urls_queue = UrlsQueueNextState}};
+
+        {empty, UrlsQueueNextState} ->
+          gen_server:cast(Sender, retry),
+          {noreply, State#local_state{urls_queue = UrlsQueueNextState}};
+
+        {retry, UrlsQueueNextState} ->
+          gen_server:cast(Sender, retry),
+          {noreply, State#local_state{urls_queue = UrlsQueueNextState}}
+      end
   end;
 
 handle_info({'DOWN', _Ref, process, Pid, _}, State) ->
@@ -156,19 +196,23 @@ gogogo(Workers, WebsiteHostnameBin, WebsiteHttpType) ->
   gen_server:cast(WorkerPid, {gogogo, WebsiteHostnameBin, WebsiteHttpType}),
   gogogo(WorkersTail, WebsiteHostnameBin, WebsiteHttpType).
 
-give_task_to_worker(UrlsQueue, Sender) ->
+pick_task_for_worker(TableIdDownloaderSrv, UrlsQueue, Sender) ->
   case queue:out(UrlsQueue) of
     {{value, {UrlPath, CurrentProcessedUrlDepthState}}, UrlsQueueNextState} ->
       if
         UrlPath =/= <<"/">> andalso UrlPath =/= <<>> ->
-          gen_server:cast(Sender, {download, UrlPath, CurrentProcessedUrlDepthState});
-        true ->
-          gen_server:cast(Sender, retry)
-      end,
+          case ets:member(TableIdDownloaderSrv, UrlPath) of
+            false ->
+              ets:insert(TableIdDownloaderSrv, {UrlPath}),
+              {{value, {UrlPath, CurrentProcessedUrlDepthState}}, UrlsQueueNextState};
+            true ->
+              pick_task_for_worker(TableIdDownloaderSrv, UrlsQueueNextState, Sender)
+          end;
 
-      UrlsQueueNextState;
+        true ->
+          {retry, UrlsQueueNextState}
+      end;
 
     {empty, UrlsQueueNextState} ->
-      gen_server:cast(Sender, retry),
-      UrlsQueueNextState
+      {empty, UrlsQueueNextState}
   end.

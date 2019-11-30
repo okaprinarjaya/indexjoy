@@ -30,7 +30,7 @@ handle_call({initial_download, IndexPage, WebsiteHostnameBin, WebsiteHttpTypeBin
       myhelpers:save_page(Body, <<"/index">>),
 
       UrlsList = myhelpers:extract_urls(Body, WebsiteHostnameBin, WebsiteHttpTypeBin),
-      UrlsListWithDepthLevel = lists:map(fun(Url) -> {Url, 1} end, UrlsList),
+      UrlsListWithDepthLevel = lists:map(fun(UrlPath) -> {UrlPath, 1} end, UrlsList),
 
       {reply, {ok, {UrlsListWithDepthLevel, 1}}, State#local_state{
         website_hostname = WebsiteHostnameBin,
@@ -38,11 +38,7 @@ handle_call({initial_download, IndexPage, WebsiteHostnameBin, WebsiteHttpTypeBin
       }};
 
     {error,timeout} ->
-      io:format("Timeout ~n"),
-      {reply, timeout, State#local_state{
-        website_hostname = WebsiteHostnameBin,
-        website_http_type = WebsiteHttpTypeBin
-      }}
+      {reply, timeout, State}
   end.
 
 handle_cast({gogogo, WebsiteHostnameBin, WebsiteHttpTypeBin}, State) ->
@@ -92,8 +88,7 @@ handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
               {noreply, State};
 
             true ->
-              %% We can't reply with message containing new urls list. Yes because the current page doesn't
-              %% contain new urls anymore so the urls extractor return empty list.
+              %% Because the current page doesn't contain new urls so the urls extractor return empty list.
               %% For the rest we only need to process next url at the queue until the queue become empty.
               gen_server:cast(DownloaderServerPid, {gimme_next_page, {[], undefined}, self()}),
               {noreply, State}
@@ -107,8 +102,7 @@ handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
       end;
 
     {error,timeout} ->
-      %% It should do requeue the timed out url here
-      io:format("Timeout ~n"),
+      gen_server:cast(DownloaderServerPid, {requeue, UrlPath, CurrentProcessedUrlDepthState, self()}),
       {noreply, State}
   end.
 
