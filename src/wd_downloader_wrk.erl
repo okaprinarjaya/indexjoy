@@ -40,13 +40,14 @@ handle_call({initial_download, IndexPage}, _From, State) ->
       {ok, Body} = hackney:body(ClientRef),
       myhelpers:save_page(Body, <<"/index">>),
 
-      UrlsList = myhelpers:extract_urls(Body, WebsiteHostnameBin, WebsiteHttpTypeBin),
-      UrlsListWithDepthLevel = lists:map(fun(UrlPath) -> {UrlPath, 1} end, UrlsList),
+      case myhelpers:extract_urls(Body, WebsiteHostnameBin, WebsiteHttpTypeBin) of
+        nomatch ->
+          {reply, nomatch, State};
 
-      {reply, {ok, {UrlsListWithDepthLevel, 1}}, State#local_state{
-        website_hostname = WebsiteHostnameBin,
-        website_http_type = WebsiteHttpTypeBin
-      }};
+        UrlsList ->
+          UrlsListWithDepthLevel = lists:map(fun(UrlPath) -> {UrlPath, 1} end, UrlsList),
+          {reply, {ok, {UrlsListWithDepthLevel, 1}}, State}
+      end;
 
     {error,timeout} ->
       {reply, timeout, State}
@@ -66,6 +67,7 @@ handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
   Headers = [
     {<<"User-Agent">>, <<"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:70.0) Gecko/20100101 Firefox/70.0">>}
   ],
+
   case hackney:request(get, Page, Headers, <<>>, []) of
     {ok, _StatusCode, _RespHeaders, ClientRef} ->
       {ok, Body} = hackney:body(ClientRef),
@@ -77,6 +79,8 @@ handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
 
           if
             length(UrlsList) > 0 ->
+              io:format("There's new urls in this page~n"),
+
               FinishedDownloadProcessDepthStateNew = CurrentProcessedUrlDepthState + 1,
               UrlsListWithDepthLevel = lists:map(
                 fun(Url) -> {Url, FinishedDownloadProcessDepthStateNew} end,
@@ -119,7 +123,8 @@ handle_cast(complete, State) ->
 handle_info(_Info, State) ->
   {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(Reason, _State) ->
+  io:format("Worker terminated: ~p~n", [Reason]),
   ok.
 
 code_change(_OldVsn, State, _Extra) ->

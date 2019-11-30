@@ -4,24 +4,44 @@
 
 extract_urls(Contents, WebsiteHostnameBin, WebsiteHttpTypeBin) ->
   Opts = [global, dotall, ungreedy, {capture, all_but_first, binary}],
-  {match, List} = re:run(Contents, <<"<a [a-z-=\" ]*href=\"([a-z0-9-:/.\"]+)\"">>, Opts),
-  List2 = lists:filter(
-    fun([Url]) ->
-      ContainWebsiteHostname = string:find(Url, WebsiteHostnameBin),
-      Url =/= <<"#">> andalso ContainWebsiteHostname =/= nomatch
-    end,
-    List
-  ),
-  lists:map(
-    fun([Url]) ->
-      WebsiteUrlPrefix = iolist_to_binary([WebsiteHttpTypeBin, <<"://">>, WebsiteHostnameBin]),
-      UrlLen = string:length(Url),
-      StartLen = string:length(WebsiteUrlPrefix),
-      EndLen = UrlLen - StartLen,
-      string:slice(Url, StartLen + 1, EndLen)
-    end,
-    List2
-  ).
+  IndexPage = iolist_to_binary([<<"http">>, <<"://">>, WebsiteHostnameBin]),
+  IndexPageEndedSlash = iolist_to_binary([<<"http">>, <<"://">>, WebsiteHostnameBin, <<"/">>]),
+
+  case re:run(Contents, <<"<a [a-z-=\" ]*href=\"([a-z0-9-:/.\"]+)\"">>, Opts) of
+    {match, List} ->
+      List2 = lists:filter(
+        fun([Url]) ->
+          ContainWebsiteHostname = string:find(Url, WebsiteHostnameBin),
+          Url =/= <<"#">> andalso
+          Url =/= <<>> andalso
+          Url =/= IndexPage andalso
+          Url =/= IndexPageEndedSlash andalso
+          ContainWebsiteHostname =/= nomatch
+        end,
+        List
+      ),
+
+      lists:map(
+        fun([Url]) ->
+          WebsiteUrlPrefix = iolist_to_binary([WebsiteHttpTypeBin, <<"://">>, WebsiteHostnameBin]),
+          UrlLen = string:length(Url),
+          StartLen = string:length(WebsiteUrlPrefix),
+          EndLen = UrlLen - StartLen,
+          UrlPath = string:slice(Url, StartLen + 1, EndLen),
+
+          case string:prefix(UrlPath, "/") of
+            nomatch ->
+              "/" ++ UrlPath;
+            _Str ->
+              UrlPath
+          end
+        end,
+        List2
+      );
+
+    nomatch ->
+      nomatch
+  end.
 
 save_page(Contents, UrlPath) ->
   BasePath = <<"/Users/okaprinarjaya/Oprek/Erlang-Oprek-Tiga/INDEX_JOY_CUSTOMERS_SEO_PAGES/downloaded-website">>,

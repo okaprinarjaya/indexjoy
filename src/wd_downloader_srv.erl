@@ -78,10 +78,12 @@ handle_call(initial_download, _From, State) ->
         {ok, {UrlsList, FinishedDownloadProcessDepthStateNew}} ->
           {reply, ok, State#local_state{
             initial_download = false,
-            website_http_type = WebsiteHttpTypeBin,
             depth_reach = FinishedDownloadProcessDepthStateNew,
             urls_queue = queue:from_list(UrlsList)
           }};
+
+        nomatch ->
+          {reply, nomatch, State};
 
         timeout ->
           {reply, {timeout, InitialDownloadTimeoutCount}, State#local_state{
@@ -178,7 +180,8 @@ handle_info({'DOWN', _Ref, process, Pid, _}, State) ->
   io:format("~p IS DOWN~n", [Pid]),
   {noreply, State}.
 
-terminate(_Reason, _State) ->
+terminate(Reason, _State) ->
+  io:format("Downloader server terminated: ~p~n", [Reason]),
   ok.
 
 code_change(_OldVsn, State, _Extra) ->

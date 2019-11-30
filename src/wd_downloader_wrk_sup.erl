@@ -14,11 +14,18 @@ start_link(SupervisorPid, MFA) ->
 init({M, F, A}) ->
   SupFlags = #{
     strategy => simple_one_for_one,
-    intensity => 10,
+    intensity => 3,
     period => 10
   },
   ChildSpecs = [
-    {wd_downloader_wrk_id, {M, F, A}, temporary, 5000, worker, [M]}
+    #{
+      id => wd_downloader_wrk_id,
+      start => {M, F, A},
+      restart => transient,
+      shutdown => 5000,
+      type => worker,
+      modules => [M]
+    }
   ],
 
   {ok, {SupFlags, ChildSpecs}}.

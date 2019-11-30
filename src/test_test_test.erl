@@ -1,4 +1,4 @@
--module(handler_test_test_test).
+-module(test_test_test).
 
 -export([init/2, fetch_page/3, create_any_tables_types/0, test_ets/1]).
 
@@ -31,10 +31,13 @@ fetch_page(Website, WebsiteHostname, WebsiteHttpType) ->
   case hackney:request(get, Website, [{<<"User-Agent">>, <<"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:70.0) Gecko/20100101 Firefox/70.0">>}], <<>>, []) of
     {ok, _StatusCode, _RespHeaders, ClientRef} ->
       {ok, Body} = hackney:body(ClientRef),
-      List = myhelpers:extract_urls(Body, WebsiteHostname, WebsiteHttpType),
-
-      % io:format("~p~n", [List]);
-      lists:foreach(fun(Url) -> io:format("~s~n", [Url]) end, List);
+      case myhelpers:extract_urls(Body, WebsiteHostname, WebsiteHttpType) of
+        nomatch ->
+          io:format("No match!~n");
+        List ->
+          % io:format("~p~n", [List]);
+          lists:foreach(fun(Url) -> io:format("~s~n", [Url]) end, List)
+      end;
 
     {error,timeout} ->
       io:format("yaaaaaahhhhhh ssiit timeout! ~n")

@@ -30,7 +30,7 @@ handle_call(
       start_link,
       [WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid]
     },
-    restart => permanent,
+    restart => transient,
     shutdown => 5000,
     type => worker,
     modules => [wd_downloader_srv]
@@ -111,6 +111,9 @@ download(WebsiteHostname) ->
   case Reply of
     ok ->
       gen_server:cast(DownloaderSrvPid, coordinate_all_workers);
+
+    nomatch ->
+      io:format("Downloader finish only at index page because failed to extract urls at index page.~n");
 
     {timeout, InitialDownloadTimeoutCount} ->
       if

@@ -19,14 +19,14 @@ start_link() ->
 init([]) ->
   SupFlags = #{
     strategy => one_for_one,
-    intensity => 10,
+    intensity => 3,
     period => 10
   },
   ChildSpecs = [
     #{
       id => wd_download_manager_srv_id,
       start => {wd_download_manager_srv, start_link, []},
-      restart => permanent,
+      restart => transient,
       shutdown => 5000,
       type => worker,
       modules => [wd_download_manager_srv]
