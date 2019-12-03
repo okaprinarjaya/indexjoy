@@ -2,7 +2,7 @@
 
 -behaviour(gen_server).
 
--export([start_link/4]).
+-export([start_link/5]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -define(MAX_WORKERS, 5).
@@ -14,20 +14,20 @@
   website_http_type,
   urls_queue,
   workers,
-  workers_done_count,
   supervisor_pid,
   table_id_downloader_srv
 }).
 
-start_link(WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid) ->
+start_link(DownloaderSrvServerName, DownloaderWrkSupServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting) ->
   gen_server:start_link(
+    {local, DownloaderSrvServerName},
     ?MODULE,
-    [WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid],
+    [DownloaderWrkSupServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting],
     []
   ).
 
-init([WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid]) ->
-  gen_server:cast(download_manager_srv, {downloader_srv_confirm, self(), WebsiteHostnameBin}),
+init([DownloaderWrkSupServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting]) ->
+  gen_server:cast(download_manager_srv, {downloader_srv_confirm, self()}),
 
   TableId = ets:new(downloader_srv, [set, public]),
 
@@ -38,24 +38,20 @@ init([WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting, SupervisorPid
     website_hostname = WebsiteHostnameBin,
     website_http_type = WebsiteHttpTypeBin,
     workers = [],
-    workers_done_count = 0,
-    supervisor_pid = SupervisorPid,
+    supervisor_pid = DownloaderWrkSupServerName,
     table_id_downloader_srv = TableId
   }}.
 
 handle_call(add_downloader_workers, _From, State) ->
-  #local_state{
-    workers = Workers,
-    supervisor_pid = SupervisorPid
-  } = State,
+  #local_state{workers = Workers, supervisor_pid = DownloaderWrkSupServerName} = State,
 
   if
     length(Workers) > 0 ->
       {reply, workers_already_added, State};
 
     true ->
-      WorkersNew = [worker_starter(SupervisorPid) || _ <- lists:seq(1, ?MAX_WORKERS)],
-      {reply, ok, State#local_state{workers = lists:append(WorkersNew, Workers)}}
+      WorkersNextState = [worker_starter(DownloaderWrkSupServerName) || _ <- lists:seq(1, ?MAX_WORKERS)],
+      {reply, ok, State#local_state{workers = lists:append(WorkersNextState, Workers)}}
   end;
 
 handle_call(initial_download, _From, State) ->
@@ -139,8 +135,8 @@ handle_cast({gimme_next_page, {UrlsList, FinishedDownloadProcessDepthStateNew}, 
         }}
     end;
 
-handle_cast(recollect_workers, #local_state{supervisor_pid = SupervisorPid} = State) ->
-  WorkersList = supervisor:which_children(SupervisorPid),
+handle_cast(recollect_workers, #local_state{supervisor_pid = DownloaderWrkSupServerName} = State) ->
+  WorkersList = supervisor:which_children(DownloaderWrkSupServerName),
 
   if
     length(WorkersList) > 0 ->
@@ -155,19 +151,35 @@ handle_cast(recollect_workers, #local_state{supervisor_pid = SupervisorPid} = St
 
     true ->
       {noreply, State}
-  end.
+  end;
 
-% handle_cast({requeue, UrlPath, CurrentProcessedUrlDepthState, Sender}, State) ->
-%   #local_state{urls_queue = UrlsQueue} = State,
-%   UrlsQueueNextState = queue:in({UrlPath, CurrentProcessedUrlDepthState}, UrlsQueue),
-%   gen_server:cast(Sender, retry),
-%   {noreply, State#local_state{urls_queue = UrlsQueueNextState}}.
+handle_cast({requeue, UrlPath, CurrentProcessedUrlDepthState, Sender}, State) ->
+  #local_state{urls_queue = UrlsQueue} = State,
+  UrlsQueueNextState = queue:in({UrlPath, CurrentProcessedUrlDepthState}, UrlsQueue),
+  gen_server:cast(Sender, retry),
+  {noreply, State#local_state{urls_queue = UrlsQueueNextState}};
+
+handle_cast({downloader_wrk_confirm, WorkerPid}, #local_state{workers = Workers} = State) ->
+  {monitored_by, MonitoredList} = process_info(WorkerPid, monitored_by),
+
+  if
+    length(MonitoredList) < 1 ->
+      MonitorRef = erlang:monitor(process, WorkerPid),
+      Member = {WorkerPid, MonitorRef},
+      WorkersNextState = [Member | Workers],
+      gen_server:cast(WorkerPid, gogogo),
+      {noreply, State#local_state{workers = WorkersNextState}};
+
+    true ->
+      {noreply, State}
+  end.
 
 handle_info({gimme_next_page_info, WorkerPid}, State) ->
   #local_state{
     depth_maximum_setting = DepthMaximumSetting,
     depth_reach = DepthReach,
     urls_queue = UrlsQueue,
+    website_hostname = WebsiteHostnameBin,
     table_id_downloader_srv = TableIdDownloaderSrv
   } = State,
 
@@ -175,7 +187,7 @@ handle_info({gimme_next_page_info, WorkerPid}, State) ->
 
   if
     DepthReach =:= DepthMaximumSetting andalso UrlsQueueLen < 1 ->
-      gen_server:cast(WorkerPid, complete),
+      gen_server:cast(download_manager_srv, {shutdown_downloader, WebsiteHostnameBin}),
       {noreply, State};
 
     true ->
@@ -194,18 +206,10 @@ handle_info({gimme_next_page_info, WorkerPid}, State) ->
       end
   end;
 
-handle_info({'DOWN', _Ref, process, _Pid, _}, State) ->
-  #local_state{workers_done_count = WorkersDoneCount, website_hostname = WebsiteHostnameBin} = State,
-  WorkersDoneCountNextState = WorkersDoneCount + 1,
-
-  if
-    WorkersDoneCountNextState =:= ?MAX_WORKERS ->
-      gen_server:cast(download_manager_srv, {shutdown_downloader, WebsiteHostnameBin}),
-      {noreply, State#local_state{workers_done_count = WorkersDoneCountNextState}};
-
-    true ->
-      {noreply, State#local_state{workers_done_count = WorkersDoneCountNextState}}
-  end;
+handle_info({'DOWN', Ref, process, Pid, _}, #local_state{workers = Workers} = State) ->
+  Member = {Pid, Ref},
+  WorkersNextState = lists:delete(Member, Workers),
+  {noreply, State#local_state{workers = WorkersNextState}};
 
 handle_info(_AnyMessage, State) ->
   {noreply, State}.

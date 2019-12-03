@@ -22,6 +22,8 @@ start_link(DownloaderSrvPid, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximu
   ).
 
 init([DownloaderSrvPid, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting]) ->
+  gen_server:cast(DownloaderSrvPid, {downloader_wrk_confirm, self()}),
+
   {ok, #local_state{
     downloader_srv = DownloaderSrvPid,
     depth_maximum_setting = DepthMaximumSetting,
@@ -103,7 +105,7 @@ handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
       end;
 
     {error,timeout} ->
-      % gen_server:cast(DownloaderSrvPid, {requeue, UrlPath, CurrentProcessedUrlDepthState, self()}),
+      gen_server:cast(DownloaderSrvPid, {requeue, UrlPath, CurrentProcessedUrlDepthState, self()}),
       {noreply, State}
   end;
 
@@ -113,12 +115,9 @@ handle_cast(gogogo, #local_state{downloader_srv = DownloaderSrvPid} = State) ->
 
 handle_cast(retry, #local_state{downloader_srv = DownloaderSrvPid} = State) ->
   erlang:send_after(5000, DownloaderSrvPid, {gimme_next_page_info, self()}),
-  {noreply, State};
+  {noreply, State}.
 
-handle_cast(complete, State) ->
-  {stop, shutdown, State}.
-
-handle_info(_Info, State) ->
+handle_info(_AnyMessage, State) ->
   {noreply, State}.
 
 terminate(_Reason, _State) ->

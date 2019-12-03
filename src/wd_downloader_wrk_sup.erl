@@ -8,8 +8,8 @@
 
 -define(SERVER, ?MODULE).
 
-start_link(SupervisorPid, MFA) ->
-  supervisor:start_link({local, SupervisorPid}, ?MODULE, MFA).
+start_link(DownloaderWrkSupServerName, MFA) ->
+  supervisor:start_link({local, DownloaderWrkSupServerName}, ?MODULE, MFA).
 
 init({M, F, A}) ->
   SupFlags = #{

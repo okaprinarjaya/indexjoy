@@ -31,7 +31,7 @@ extract_urls(Contents, WebsiteHostnameBin, WebsiteHttpTypeBin) ->
 
           case string:prefix(UrlPath, "/") of
             nomatch ->
-              "/" ++ UrlPath;
+             iolist_to_binary([<<"/">>, UrlPath]);
             _Str ->
               UrlPath
           end
