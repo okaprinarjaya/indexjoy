@@ -79,8 +79,6 @@ handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
 
           if
             length(UrlsList) > 0 ->
-              io:format("There's new urls in this page~n"),
-
               FinishedDownloadProcessDepthStateNew = CurrentProcessedUrlDepthState + 1,
               UrlsListWithDepthLevel = lists:map(
                 fun(Url) -> {Url, FinishedDownloadProcessDepthStateNew} end,
@@ -105,7 +103,7 @@ handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
       end;
 
     {error,timeout} ->
-      gen_server:cast(DownloaderSrvPid, {requeue, UrlPath, CurrentProcessedUrlDepthState, self()}),
+      % gen_server:cast(DownloaderSrvPid, {requeue, UrlPath, CurrentProcessedUrlDepthState, self()}),
       {noreply, State}
   end;
 
@@ -123,8 +121,7 @@ handle_cast(complete, State) ->
 handle_info(_Info, State) ->
   {noreply, State}.
 
-terminate(Reason, _State) ->
-  io:format("Worker terminated: ~p~n", [Reason]),
+terminate(_Reason, _State) ->
   ok.
 
 code_change(_OldVsn, State, _Extra) ->
