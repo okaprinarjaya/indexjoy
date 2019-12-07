@@ -27,7 +27,7 @@ start_link(DownloaderSrvServerName, DownloaderWrkSupServerName, WebsiteHostnameB
   ).
 
 init([DownloaderWrkSupServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting]) ->
-  gen_server:cast(download_manager_srv, {downloader_srv_confirm, self()}),
+  gen_server:cast(download_manager_srv, {downloader_srv_confirm, self(), WebsiteHostnameBin}),
 
   TableId = ets:new(downloader_srv, [set, public]),
 
@@ -79,16 +79,32 @@ handle_call(initial_download, _From, State) ->
           }};
 
         nomatch ->
-          {reply, nomatch, State}
+          {reply, nomatch, State};
 
-        % timeout ->
-        %   {reply, {timeout, InitialDownloadTimeoutCount}, State#local_state{
-        %     initial_download_timeout_count = InitialDownloadTimeoutCount + 1
-        %   }}
+        timeout ->
+          {reply, timeout, State}
       end;
 
     false ->
       {reply, already_started, State}
+  end;
+
+handle_call(recollect_workers, _From, #local_state{supervisor_pid = DownloaderWrkSupServerName} = State) ->
+  WorkersList = supervisor:which_children(DownloaderWrkSupServerName),
+
+  if
+    length(WorkersList) > 0 ->
+      WorkersNextState = lists:map(
+        fun({undefined, Pid, worker, _}) ->
+          MonitorRef = erlang:monitor(process, Pid),
+          {Pid, MonitorRef}
+        end,
+        WorkersList
+      ),
+      {reply, ok, State#local_state{workers = WorkersNextState}};
+
+    true ->
+      {reply, ok, State}
   end.
 
 handle_cast(coordinate_all_workers, #local_state{workers = Workers} = State) ->
@@ -134,24 +150,6 @@ handle_cast({gimme_next_page, {UrlsList, FinishedDownloadProcessDepthStateNew}, 
           urls_queue = UrlsQueueNextState
         }}
     end;
-
-handle_cast(recollect_workers, #local_state{supervisor_pid = DownloaderWrkSupServerName} = State) ->
-  WorkersList = supervisor:which_children(DownloaderWrkSupServerName),
-
-  if
-    length(WorkersList) > 0 ->
-      WorkersNextState = lists:map(
-        fun({undefined, Pid, worker, _}) ->
-          MonitorRef = erlang:monitor(process, Pid),
-          {Pid, MonitorRef}
-        end,
-        WorkersList
-      ),
-      {noreply, State#local_state{workers = WorkersNextState}};
-
-    true ->
-      {noreply, State}
-  end;
 
 handle_cast({requeue, UrlPath, CurrentProcessedUrlDepthState, Sender}, State) ->
   #local_state{urls_queue = UrlsQueue} = State,
