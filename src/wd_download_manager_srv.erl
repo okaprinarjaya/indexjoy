@@ -4,25 +4,25 @@
 
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
--export([start_new_downloader/3, add_downloader_workers/1, download/1]).
+-export([start_new_downloader/3, download/2]).
 
 -define(MAX_CRASH, 2).
 -define(MAX_RETRY, 3).
 
--record(local_state, {downloaders, downloaders_fails_count}).
+-record(local_state, {sequences, downloaders, downloaders_fails_count}).
 
 start_link() ->
   gen_server:start_link({local, download_manager_srv}, ?MODULE, [], []).
 
 init(_Args) ->
-  {ok, #local_state{downloaders = dict:new(), downloaders_fails_count = dict:new()}}.
+  {ok, #local_state{sequences = 0, downloaders = dict:new(), downloaders_fails_count = dict:new()}}.
 
 handle_call({start_wd_downloader_srv, Args}, _From, State) ->
   #local_state{downloaders = Downloaders, downloaders_fails_count = DownloadersFailsCount} = State,
-  [DownloaderSrvServerName, _, WebsiteHostnameBin, _, _] = Args,
+  DownloaderSrvServerName = lists:nth(2, Args),
 
   ChildSpecs = #{
-    id => get_server_name(WebsiteHostnameBin, <<"_srv">>),
+    id => DownloaderSrvServerName,
     start => {wd_downloader_srv, start_link, Args},
     restart => transient,
     shutdown => 5000,
@@ -51,11 +51,15 @@ handle_call({start_wd_downloader_wrk_sup, DownloaderWrkSupServerName, MFA}, _Fro
   },
 
   {ok, _Pid} = supervisor:start_child(idea_execute_sup, ChildSpecs),
-  {reply, ok, State}.
+  {reply, ok, State};
 
-handle_cast({downloader_srv_confirm, DownloaderSrvPid, WebsiteHostnameBin}, State) ->
+handle_call(next_sequence, _From, #local_state{sequences = Sequences} = State) ->
+  SequencesNextState = Sequences + 1,
+  {reply, {ok, SequencesNextState}, State#local_state{sequences = SequencesNextState}}.
+
+handle_cast({downloader_srv_confirm, DownloaderSrvPid, Sequence, WebsiteHostnameBin}, State) ->
   #local_state{downloaders = Downloaders, downloaders_fails_count = DownloadersFailsCount} = State,
-  DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, <<"_srv">>),
+  DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, Sequence, <<"_srv">>),
   {ok, CounterValue} = dict:find(DownloaderSrvServerName, DownloadersFailsCount),
 
   if
@@ -79,12 +83,12 @@ handle_cast({downloader_srv_confirm, DownloaderSrvPid, WebsiteHostnameBin}, Stat
       {noreply, State#local_state{downloaders_fails_count = DownloadersFailsCountNextState}}
   end;
 
-handle_cast({shutdown_downloader, WebsiteHostnameBin}, State) ->
+handle_cast({shutdown_downloader, Sequence, WebsiteHostnameBin}, State) ->
   #local_state{downloaders_fails_count = DownloadersFailsCount} = State,
   io:format("Shutting down the downloader for: ~p~n", [WebsiteHostnameBin]),
 
-  DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, <<"_srv">>),
-  DownloaderWrkSup = get_server_name(WebsiteHostnameBin, <<"_sup">>),
+  DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, Sequence, <<"_srv">>),
+  DownloaderWrkSup = get_server_name(WebsiteHostnameBin, Sequence, <<"_sup">>),
 
   ok = supervisor:terminate_child(idea_execute_sup, DownloaderWrkSup),
   ok = supervisor:terminate_child(idea_execute_sup, DownloaderSrvServerName),
@@ -134,13 +138,15 @@ code_change(_OldVsn, State, _Extra) ->
   {ok, State}.
 
 start_new_downloader(WebsiteHostname, WebsiteHttpType, DepthMaximumSetting) ->
+  {ok, Sequence} = gen_server:call(download_manager_srv, next_sequence),
   WebsiteHostnameBin = list_to_binary(WebsiteHostname),
   WebsiteHttpTypeBin = list_to_binary(WebsiteHttpType),
-  DownloaderWrkSupServerName = get_server_name(WebsiteHostnameBin, <<"_sup">>),
-  DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, <<"_srv">>),
+  DownloaderWrkSupServerName = get_server_name(WebsiteHostnameBin, Sequence, <<"_sup">>),
+  DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, Sequence, <<"_srv">>),
 
   %% Create new downloader server
   DownloaderSrvArgs = [
+    Sequence,
     DownloaderSrvServerName,
     DownloaderWrkSupServerName,
     WebsiteHostnameBin,
@@ -148,28 +154,21 @@ start_new_downloader(WebsiteHostname, WebsiteHttpType, DepthMaximumSetting) ->
     DepthMaximumSetting
   ],
   ok = gen_server:call(download_manager_srv, {start_wd_downloader_srv, DownloaderSrvArgs}),
-  DownloaderWrkArgs = [DownloaderSrvServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting],
-  MFA = {wd_downloader_wrk, start_link, DownloaderWrkArgs},
 
   %% Create the new supervisor of downloader worker
+  DownloaderWrkArgs = [DownloaderSrvServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting],
+  MFA = {wd_downloader_wrk, start_link, DownloaderWrkArgs},
   ok = gen_server:call(download_manager_srv, {start_wd_downloader_wrk_sup, DownloaderWrkSupServerName, MFA}),
-  ok.
 
-add_downloader_workers(WebsiteHostname) ->
+  %% Add workers
+  ok = gen_server:call(DownloaderSrvServerName, add_downloader_workers),
+  {ok, Sequence}.
+
+download(WebsiteHostname, Sequence) ->
+  download(WebsiteHostname, Sequence, 0).
+download(WebsiteHostname, Sequence, GenServerCallTimeoutCount) ->
   WebsiteHostnameBin = list_to_binary(WebsiteHostname),
-  DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, <<"_srv">>),
-  Reply = gen_server:call(DownloaderSrvServerName, add_downloader_workers),
-
-  case Reply of
-    ok -> ok;
-    workers_already_added -> 'WORKERS_ALREADY_ADDED'
-  end.
-
-download(WebsiteHostname) ->
-  download(WebsiteHostname, 0).
-download(WebsiteHostname, GenServerCallTimeoutCount) ->
-  WebsiteHostnameBin = list_to_binary(WebsiteHostname),
-  DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, <<"_srv">>),
+  DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, Sequence, <<"_srv">>),
 
   if
     GenServerCallTimeoutCount < 1 ->
@@ -184,9 +183,9 @@ download(WebsiteHostname, GenServerCallTimeoutCount) ->
 
       if
         GenServerCallTimeoutCountNextState =< ?MAX_RETRY ->
-          download(WebsiteHostname, GenServerCallTimeoutCountNextState);
+          download(WebsiteHostname, Sequence, GenServerCallTimeoutCountNextState);
         true ->
-          gen_server:cast(download_manager_srv, {shutdown_downloader, WebsiteHostnameBin}),
+          gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin}),
           'INITIAL_DOWNLOAD_MAX_RETRY_REACHED'
       end;
 
@@ -203,6 +202,6 @@ download(WebsiteHostname, GenServerCallTimeoutCount) ->
       'DOWNLOAD_ALREADY_STARTED'
   end.
 
-get_server_name(WebsiteHostnameBin, TypeBin) ->
-  ListToBin = iolist_to_binary([WebsiteHostnameBin, TypeBin]),
+get_server_name(WebsiteHostnameBin, Sequence, TypeBin) ->
+  ListToBin = iolist_to_binary([WebsiteHostnameBin, integer_to_binary(Sequence), TypeBin]),
   binary_to_atom(ListToBin, utf8).

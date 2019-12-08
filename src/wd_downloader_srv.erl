@@ -2,11 +2,12 @@
 
 -behaviour(gen_server).
 
--export([start_link/5]).
+-export([start_link/6]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 
 -define(MAX_WORKERS, 5).
 -record(local_state, {
+  sequence,
   initial_download,
   depth_maximum_setting,
   depth_reach,
@@ -18,20 +19,21 @@
   table_id_downloader_srv
 }).
 
-start_link(DownloaderSrvServerName, DownloaderWrkSupServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting) ->
+start_link(Sequence, DownloaderSrvServerName, DownloaderWrkSupServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting) ->
   gen_server:start_link(
     {local, DownloaderSrvServerName},
     ?MODULE,
-    [DownloaderWrkSupServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting],
+    [Sequence, DownloaderWrkSupServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting],
     []
   ).
 
-init([DownloaderWrkSupServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting]) ->
-  gen_server:cast(download_manager_srv, {downloader_srv_confirm, self(), WebsiteHostnameBin}),
+init([Sequence, DownloaderWrkSupServerName, WebsiteHostnameBin, WebsiteHttpTypeBin, DepthMaximumSetting]) ->
+  gen_server:cast(download_manager_srv, {downloader_srv_confirm, self(), Sequence, WebsiteHostnameBin}),
 
   TableId = ets:new(downloader_srv, [set, public]),
 
   {ok, #local_state{
+    sequence = Sequence,
     initial_download = true,
     depth_maximum_setting = DepthMaximumSetting,
     depth_reach = 0,
@@ -47,7 +49,7 @@ handle_call(add_downloader_workers, _From, State) ->
 
   if
     length(Workers) > 0 ->
-      {reply, workers_already_added, State};
+      {reply, ok, State};
 
     true ->
       WorkersNextState = [worker_starter(DownloaderWrkSupServerName) || _ <- lists:seq(1, ?MAX_WORKERS)],
@@ -174,6 +176,7 @@ handle_cast({downloader_wrk_confirm, WorkerPid}, #local_state{workers = Workers}
 
 handle_info({gimme_next_page_info, WorkerPid}, State) ->
   #local_state{
+    sequence = Sequence,
     depth_maximum_setting = DepthMaximumSetting,
     depth_reach = DepthReach,
     urls_queue = UrlsQueue,
@@ -185,7 +188,7 @@ handle_info({gimme_next_page_info, WorkerPid}, State) ->
 
   if
     DepthReach =:= DepthMaximumSetting andalso UrlsQueueLen < 1 ->
-      gen_server:cast(download_manager_srv, {shutdown_downloader, WebsiteHostnameBin}),
+      gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin}),
       {noreply, State};
 
     true ->
