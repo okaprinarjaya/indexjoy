@@ -6,19 +6,18 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([start_new_downloader/3, download/2]).
 
--define(MAX_CRASH, 2).
 -define(MAX_RETRY, 3).
 
--record(local_state, {sequences, downloaders, downloaders_fails_count}).
+-record(local_state, {sequences, downloaders}).
 
 start_link() ->
   gen_server:start_link({local, download_manager_srv}, ?MODULE, [], []).
 
 init(_Args) ->
-  {ok, #local_state{sequences = 0, downloaders = dict:new(), downloaders_fails_count = dict:new()}}.
+  {ok, #local_state{sequences = 0, downloaders = dict:new()}}.
 
 handle_call({start_wd_downloader_srv, Args}, _From, State) ->
-  #local_state{downloaders = Downloaders, downloaders_fails_count = DownloadersFailsCount} = State,
+  #local_state{downloaders = Downloaders} = State,
   DownloaderSrvServerName = lists:nth(2, Args),
 
   ChildSpecs = #{
@@ -33,12 +32,7 @@ handle_call({start_wd_downloader_srv, Args}, _From, State) ->
   {ok, DownloaderSrvPid} = supervisor:start_child(idea_execute_sup, ChildSpecs),
   _MonitorRef = erlang:monitor(process, DownloaderSrvPid),
   DownloadersNextState = dict:store(DownloaderSrvPid, DownloaderSrvServerName, Downloaders),
-  DownloadersFailsCountNextState = dict:store(DownloaderSrvServerName, 0, DownloadersFailsCount),
-
-  {reply, ok, State#local_state{
-    downloaders = DownloadersNextState,
-    downloaders_fails_count = DownloadersFailsCountNextState
-  }};
+  {reply, ok, State#local_state{downloaders = DownloadersNextState}};
 
 handle_call({start_wd_downloader_wrk_sup, DownloaderWrkSupServerName, MFA}, _From, State) ->
   ChildSpecs = #{
@@ -58,33 +52,29 @@ handle_call(next_sequence, _From, #local_state{sequences = Sequences} = State) -
   {reply, {ok, SequencesNextState}, State#local_state{sequences = SequencesNextState}}.
 
 handle_cast({downloader_srv_confirm, DownloaderSrvPid, Sequence, WebsiteHostnameBin}, State) ->
-  #local_state{downloaders = Downloaders, downloaders_fails_count = DownloadersFailsCount} = State,
-  DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, Sequence, <<"_srv">>),
-  {ok, CounterValue} = dict:find(DownloaderSrvServerName, DownloadersFailsCount),
+  case process_info(DownloaderSrvPid, monitored_by) of
+    undefined ->
+      {noreply, State};
 
-  if
-    CounterValue =< ?MAX_CRASH ->
-      {monitored_by, MonitoredList} = process_info(DownloaderSrvPid, monitored_by),
+    {badmatch, undefined} ->
+      {noreply, State};
 
+    {monitored_by, MonitoredList} ->
       if
         length(MonitoredList) < 1 ->
+          #local_state{downloaders = Downloaders} = State,
           _MonitorRef = erlang:monitor(process, DownloaderSrvPid),
+          DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, Sequence, <<"_srv">>),
           DownloadersNextState = dict:store(DownloaderSrvPid, DownloaderSrvServerName, Downloaders),
           ok = gen_server:call(DownloaderSrvPid, recollect_workers),
           {noreply, State#local_state{downloaders = DownloadersNextState}};
 
         true ->
           {noreply, State}
-      end;
-
-    true ->
-      DownloadersFailsCountNextState = dict:erase(DownloaderSrvServerName, DownloadersFailsCount),
-      gen_server:cast(download_manager_srv, {shutdown_downloader, WebsiteHostnameBin}),
-      {noreply, State#local_state{downloaders_fails_count = DownloadersFailsCountNextState}}
+      end
   end;
 
 handle_cast({shutdown_downloader, Sequence, WebsiteHostnameBin}, State) ->
-  #local_state{downloaders_fails_count = DownloadersFailsCount} = State,
   io:format("Shutting down the downloader for: ~p~n", [WebsiteHostnameBin]),
 
   DownloaderSrvServerName = get_server_name(WebsiteHostnameBin, Sequence, <<"_srv">>),
@@ -93,40 +83,17 @@ handle_cast({shutdown_downloader, Sequence, WebsiteHostnameBin}, State) ->
   ok = supervisor:terminate_child(idea_execute_sup, DownloaderWrkSup),
   ok = supervisor:terminate_child(idea_execute_sup, DownloaderSrvServerName),
   ok = supervisor:delete_child(idea_execute_sup, DownloaderSrvServerName),
-  DownloadersFailsCountNextState = dict:erase(DownloaderSrvServerName, DownloadersFailsCount),
 
   io:format("Shutdown ok~n"),
-  {noreply, State#local_state{downloaders_fails_count = DownloadersFailsCountNextState}};
+  {noreply, State};
 
 handle_cast(_Message, State) ->
   {noreply, State}.
 
 handle_info({'DOWN', _Ref, process, Pid, _}, State) ->
-  #local_state{downloaders = Downloaders, downloaders_fails_count = DownloadersFailsCount} = State,
-  {ok, DownloaderSrvServerName} = dict:find(Pid, Downloaders),
-
-  case dict:find(DownloaderSrvServerName, DownloadersFailsCount) of
-    error ->
-      DownloadersNextState = dict:erase(Pid, Downloaders),
-      {noreply, State#local_state{downloaders = DownloadersNextState}};
-
-    {ok, CounterValue} ->
-      MaxCrash = ?MAX_CRASH + 1,
-
-      if
-        CounterValue =< MaxCrash ->
-          DownloadersFailsCountNextState = dict:update_counter(DownloaderSrvServerName, 1, DownloadersFailsCount),
-          DownloadersNextState = dict:erase(Pid, Downloaders),
-
-          {noreply, State#local_state{
-            downloaders = DownloadersNextState,
-            downloaders_fails_count = DownloadersFailsCountNextState
-          }};
-
-        true ->
-          {noreply, State}
-      end
-  end;
+  #local_state{downloaders = Downloaders} = State,
+  DownloadersNextState = dict:erase(Pid, Downloaders),
+  {noreply, State#local_state{downloaders = DownloadersNextState}};
 
 handle_info(_AnyMessage, State) ->
   {noreply, State}.
@@ -185,21 +152,33 @@ download(WebsiteHostname, Sequence, GenServerCallTimeoutCount) ->
         GenServerCallTimeoutCountNextState =< ?MAX_RETRY ->
           download(WebsiteHostname, Sequence, GenServerCallTimeoutCountNextState);
         true ->
-          gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin}),
-          'INITIAL_DOWNLOAD_MAX_RETRY_REACHED'
+          io:format("WARNING: Initial download max retry limit reached~n"),
+          gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin})
       end;
 
     ok ->
       gen_server:cast(DownloaderSrvServerName, coordinate_all_workers);
 
     nomatch ->
-      'INITIAL_DOWNLOAD_FINISH_INDEX_PAGE_URLS_NOMATCH';
+      io:format("WARNING: Index page not contain urls. Download stop at index page.~n"),
+      gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin});
 
     timeout ->
-      'REQUEST_TIMEOUT';
+      GenServerCallTimeoutCountNextState = GenServerCallTimeoutCount + 1,
+
+      if
+        GenServerCallTimeoutCountNextState =< ?MAX_RETRY ->
+          download(WebsiteHostname, Sequence, GenServerCallTimeoutCountNextState);
+        true ->
+          io:format("WARNING: Initial download max retry limit reached~n"),
+          gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin})
+      end;
 
     already_started ->
-      'DOWNLOAD_ALREADY_STARTED'
+      io:format("WARNING: Download already started~n");
+
+    _AnyOther ->
+      gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin})
   end.
 
 get_server_name(WebsiteHostnameBin, Sequence, TypeBin) ->

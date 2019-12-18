@@ -9,7 +9,7 @@
 start(_StartType, _StartArgs) ->
   %% Routes Setup
   RoutesForRedirect = [?ROUTE_INDEXJOY_HOST_REDIRECT, {'_', [{'_', handler_any_host_any_path_redirect, []}]}],
-  RoutesForHttps = [?ROUTE_INDEXJOY_HOST_FOR_HTTPS, {'_', [{'_', handler_any_host_any_path, []}]}],
+  RoutesForHttps = [{'_', [{'_', handler_any_host_any_path, []}]}],
 
   DispatchForRedirect = cowboy_router:compile(RoutesForRedirect),
   DispatchForHttps = cowboy_router:compile(RoutesForHttps),

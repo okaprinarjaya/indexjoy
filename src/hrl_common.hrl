@@ -27,14 +27,16 @@
 -define(INDEXJOY_JOY_AUTO_HTTPS_STATUS, disable_auto_https).
 
 -define(ROUTE_PATH_LIST_INDEXJOY_FOR_REDIRECT, [
-  {'_', handler_indexjoy_root_redirect, []}
+  {<<"/">>, handler_indexjoy_root, []},
+  {<<"/api/test">>, handler_indexjoy_api_test, []}
 ]).
--define(ROUTE_PATH_LIST_INDEXJOY_FOR_HTTPS, [
-  {<<"/">>, handler_indexjoy_root, []}
-]).
+% -define(ROUTE_PATH_LIST_INDEXJOY_FOR_HTTPS, [
+%   {<<"/">>, handler_indexjoy_root, []},
+%   {<<"/api/test">>, handler_indexjoy_api_test, []}
+% ]).
 
 -define(ROUTE_INDEXJOY_HOST_REDIRECT, {<<"indexjoy.com">>, ?ROUTE_PATH_LIST_INDEXJOY_FOR_REDIRECT}).
--define(ROUTE_INDEXJOY_HOST_FOR_HTTPS, {<<"indexjoy.com">>, ?ROUTE_PATH_LIST_INDEXJOY_FOR_HTTPS}).
+% -define(ROUTE_INDEXJOY_HOST_FOR_HTTPS, {<<"indexjoy.com">>, ?ROUTE_PATH_LIST_INDEXJOY_FOR_HTTPS}).
 
 %% SEARCH ENGINE CRAWLER BOT USER AGENT
 -define(SEARCH_ENGINE_CRAWLER_BOT_LIST, [

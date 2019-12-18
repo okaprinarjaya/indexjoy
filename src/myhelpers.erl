@@ -4,8 +4,8 @@
 
 extract_urls(Contents, WebsiteHostnameBin, WebsiteHttpTypeBin) ->
   Opts = [global, dotall, ungreedy, {capture, all_but_first, binary}],
-  IndexPage = iolist_to_binary([<<"http">>, <<"://">>, WebsiteHostnameBin]),
-  IndexPageEndedSlash = iolist_to_binary([<<"http">>, <<"://">>, WebsiteHostnameBin, <<"/">>]),
+  IndexPage = iolist_to_binary([WebsiteHttpTypeBin, <<"://">>, WebsiteHostnameBin]),
+  IndexPageEndedSlash = iolist_to_binary([WebsiteHttpTypeBin, <<"://">>, WebsiteHostnameBin, <<"/">>]),
 
   case re:run(Contents, <<"<a [a-z-=\" ]*href=\"([a-z0-9-:/.\"]+)\"">>, Opts) of
     {match, List} ->
@@ -31,7 +31,7 @@ extract_urls(Contents, WebsiteHostnameBin, WebsiteHttpTypeBin) ->
 
           case string:prefix(UrlPath, "/") of
             nomatch ->
-             iolist_to_binary([<<"/">>, UrlPath]);
+              iolist_to_binary([<<"/">>, UrlPath]);
             _Str ->
               UrlPath
           end
