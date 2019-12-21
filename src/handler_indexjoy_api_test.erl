@@ -31,7 +31,7 @@ init(Req0, State) ->
 
   %% START DOWNLOADER %%
   {ok, Sequence} = wd_download_manager_srv:start_new_downloader(Hostname, Protocol, 1),
-  wd_download_manager_srv:download(Hostname, Sequence),
+  ok = wd_download_manager_srv:download(Hostname, Sequence),
 
   Req = cowboy_req:reply(
     200,

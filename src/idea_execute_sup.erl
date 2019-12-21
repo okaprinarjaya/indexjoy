@@ -22,6 +22,7 @@ init([]) ->
     intensity => 3,
     period => 10
   },
+  MFAForDownloaderSinglePath = {wd_downloader_single_path_wrk, start_link, []},
   ChildSpecs = [
     #{
       id => wd_download_manager_srv_id,
@@ -30,6 +31,14 @@ init([]) ->
       shutdown => 5000,
       type => worker,
       modules => [wd_download_manager_srv]
+    },
+    #{
+      id => wd_downloader_single_path_wrk_sup_id,
+      start => {wd_downloader_single_path_wrk_sup, start_link, [MFAForDownloaderSinglePath]},
+      restart => transient,
+      shutdown => 5000,
+      type => supervisor,
+      modules => [wd_downloader_single_path_wrk_sup]
     }
   ],
 

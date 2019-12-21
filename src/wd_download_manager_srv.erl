@@ -5,6 +5,7 @@
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2, code_change/3]).
 -export([start_new_downloader/3, download/2]).
+-export([download_single_url/1]).
 
 -define(MAX_RETRY, 3).
 
@@ -87,13 +88,25 @@ handle_cast({shutdown_downloader, Sequence, WebsiteHostnameBin}, State) ->
   io:format("Shutdown ok~n"),
   {noreply, State};
 
+handle_cast({download_single_path, UrlPath}, State) ->
+  {ok, Pid} = supervisor:start_child(wd_downloader_single_path_wrk_sup, [UrlPath]),
+  _Ref = erlang:monitor(process, Pid),
+  {noreply, State};
+
 handle_cast(_Message, State) ->
   {noreply, State}.
 
 handle_info({'DOWN', _Ref, process, Pid, _}, State) ->
   #local_state{downloaders = Downloaders} = State,
-  DownloadersNextState = dict:erase(Pid, Downloaders),
-  {noreply, State#local_state{downloaders = DownloadersNextState}};
+  case dict:is_key(Pid, Downloaders) of
+    true ->
+      io:format("Whole website downloader server~n"),
+      DownloadersNextState = dict:erase(Pid, Downloaders),
+      {noreply, State#local_state{downloaders = DownloadersNextState}};
+    false ->
+      io:format("Single website url path download~n"),
+      {noreply, State}
+  end;
 
 handle_info(_AnyMessage, State) ->
   {noreply, State}.
@@ -145,6 +158,9 @@ download(WebsiteHostname, Sequence, GenServerCallTimeoutCount) ->
   end,
 
   case catch gen_server:call(DownloaderSrvServerName, initial_download) of
+    ok ->
+      gen_server:cast(DownloaderSrvServerName, coordinate_all_workers);
+
     {'EXIT', {timeout, _TheRest}} ->
       GenServerCallTimeoutCountNextState = GenServerCallTimeoutCount + 1,
 
@@ -155,13 +171,6 @@ download(WebsiteHostname, Sequence, GenServerCallTimeoutCount) ->
           io:format("WARNING: Initial download max retry limit reached~n"),
           gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin})
       end;
-
-    ok ->
-      gen_server:cast(DownloaderSrvServerName, coordinate_all_workers);
-
-    nomatch ->
-      io:format("WARNING: Index page not contain urls. Download stop at index page.~n"),
-      gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin});
 
     timeout ->
       GenServerCallTimeoutCountNextState = GenServerCallTimeoutCount + 1,
@@ -174,12 +183,19 @@ download(WebsiteHostname, Sequence, GenServerCallTimeoutCount) ->
           gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin})
       end;
 
+    nomatch ->
+      io:format("WARNING: Index page not contain urls. Download stop at index page.~n"),
+      gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin});
+
     already_started ->
       io:format("WARNING: Download already started~n");
 
     _AnyOther ->
       gen_server:cast(download_manager_srv, {shutdown_downloader, Sequence, WebsiteHostnameBin})
   end.
+
+download_single_url(UrlPath) ->
+  gen_server:cast(download_manager_srv, {download_single_path, UrlPath}).
 
 get_server_name(WebsiteHostnameBin, Sequence, TypeBin) ->
   ListToBin = iolist_to_binary([WebsiteHostnameBin, integer_to_binary(Sequence), TypeBin]),

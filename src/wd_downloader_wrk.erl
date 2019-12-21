@@ -51,10 +51,10 @@ handle_call({initial_download, IndexPage}, _From, State) ->
           {reply, {ok, {UrlsListWithDepthLevel, 1}}, State}
       end;
 
-    {error, timeout} ->
+    {error, connect_timeout} ->
       {reply, timeout, State};
 
-    {error, connect_timeout} ->
+    {error, timeout} ->
       {reply, timeout, State}
   end.
 
@@ -67,7 +67,7 @@ handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
   } = State,
   Page = iolist_to_binary([WebsiteHttpTypeBin, <<"://">>, WebsiteHostnameBin, UrlPath]),
 
-  io:format("~p downloading: ~p, depth_state = ~p~n", [self(), Page, CurrentProcessedUrlDepthState]),
+  io:format("~p downloading: ~p, depth = ~p~n", [self(), Page, CurrentProcessedUrlDepthState]),
 
   Headers = [
     {<<"User-Agent">>, <<"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:70.0) Gecko/20100101 Firefox/70.0">>}
@@ -107,11 +107,11 @@ handle_cast({download, UrlPath, CurrentProcessedUrlDepthState}, State) ->
           {noreply, State}
       end;
 
-    {error, timeout} ->
+    {error, connect_timeout} ->
       gen_server:cast(DownloaderSrvPid, {requeue, UrlPath, CurrentProcessedUrlDepthState, self()}),
       {noreply, State};
 
-    {error, connect_timeout} ->
+    {error, timeout} ->
       gen_server:cast(DownloaderSrvPid, {requeue, UrlPath, CurrentProcessedUrlDepthState, self()}),
       {noreply, State}
   end;

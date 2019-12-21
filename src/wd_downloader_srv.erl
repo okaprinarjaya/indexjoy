@@ -73,18 +73,18 @@ handle_call(initial_download, _From, State) ->
         {'EXIT', {timeout, _TheRest}} ->
           {reply, timeout, State};
 
+        timeout ->
+          {reply, timeout, State};
+
+        nomatch ->
+          {reply, nomatch, State};
+
         {ok, {UrlsList, FinishedDownloadProcessDepthStateNew}} ->
           {reply, ok, State#local_state{
             initial_download = false,
             depth_reach = FinishedDownloadProcessDepthStateNew,
             urls_queue = queue:from_list(UrlsList)
-          }};
-
-        nomatch ->
-          {reply, nomatch, State};
-
-        timeout ->
-          {reply, timeout, State}
+          }}
       end;
 
     false ->
