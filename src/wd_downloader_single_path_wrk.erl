@@ -17,8 +17,28 @@ handle_call(_AnyMessage, _From, State) ->
 
 handle_cast({download, UrlPath}, State) ->
   io:format("Downloading: ~p~n", [UrlPath]),
-  timer:sleep(5000),
-  {stop, normal, State};
+
+  Headers = [
+    {<<"User-Agent">>, <<"Mozilla/5.0 (Macintosh; Intel Mac OS X 10.14; rv:70.0) Gecko/20100101 Firefox/70.0">>}
+  ],
+
+  case hackney:request(get, UrlPath, Headers, <<>>, []) of
+    {ok, 200, _RespHeaders, ClientRef} ->
+      {ok, Body} = hackney:body(ClientRef),
+      UrlSplit = string:split(UrlPath, "//"),
+      myhelpers:save_page(Body, lists:nth(2, UrlSplit)),
+
+      io:format("Done~n"),
+      {stop, normal, State};
+
+    {error, connect_timeout} ->
+      io:format("Connect timeout~n"),
+      {stop, normal, State};
+
+    {error, timeout} ->
+      io:format("Just timeout~n"),
+      {stop, normal, State}
+  end;
 
 handle_cast(_AnyMessage, State) ->
   {noreply, State}.

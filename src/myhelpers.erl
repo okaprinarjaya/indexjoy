@@ -53,6 +53,12 @@ save_page(Contents, UrlPath) ->
   end.
 
 create_filename(UrlPath) ->
-  ReplaceWithDashIoL = string:replace(UrlPath, "/", "-", all),
-  DashedBin = iolist_to_binary(ReplaceWithDashIoL),
-  string:slice(DashedBin, 1, string:length(DashedBin)).
+  ReplaceWithDash1IOL = string:replace(UrlPath, ".", "-", all),
+  ReplaceWithDash2IOL = string:replace(ReplaceWithDash1IOL, "/", "-", all),
+  DashedBin = iolist_to_binary(ReplaceWithDash2IOL),
+
+  case string:prefix(DashedBin, "/") of
+    nomatch ->
+      DashedBin;
+    Any -> Any
+  end.

@@ -100,11 +100,9 @@ handle_info({'DOWN', _Ref, process, Pid, _}, State) ->
   #local_state{downloaders = Downloaders} = State,
   case dict:is_key(Pid, Downloaders) of
     true ->
-      io:format("Whole website downloader server~n"),
       DownloadersNextState = dict:erase(Pid, Downloaders),
       {noreply, State#local_state{downloaders = DownloadersNextState}};
     false ->
-      io:format("Single website url path download~n"),
       {noreply, State}
   end;
 
