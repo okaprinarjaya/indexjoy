@@ -1,10 +1,10 @@
--module(handler_indexjoy_root).
+-module(handler_indexjoy_path_root).
 
 -export([init/2]).
 
 init(Request, State) ->
   {atomic, Rows} = db_customers_seo_pages:select_all(),
-  F = fun(Row) ->
+  Fn = fun(Row) ->
     {CustomerHostAndPath, _HostOnly, PageFilename} = Row,
     [
       <<"<li>">>,
@@ -14,8 +14,8 @@ init(Request, State) ->
       <<"</li>">>
     ]
   end,
-  HtmlUList = [F(Row) || Row <- Rows],
 
+  HtmlUList = [Fn(Row) || Row <- Rows],
   HTML = [
     <<"<html><head><title>Welcome to IndexJoy!</title></head><body>">>,
     <<"<h1>Halo Customer! Halo Good Bot! Welcome to IndexJoy!</h1>">>,

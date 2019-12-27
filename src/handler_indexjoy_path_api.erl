@@ -1,4 +1,4 @@
--module(handler_indexjoy_api_test).
+-module(handler_indexjoy_path_api).
 
 -export([init/2]).
 
